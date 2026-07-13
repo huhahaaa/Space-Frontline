@@ -20,6 +20,7 @@ import 'components/fire_storm.dart';
 import 'components/emp_wave.dart';
 import 'buffs/buff_registry.dart';
 import 'buffs/buff_manager.dart';
+import 'talent_manager.dart';
 import 'buffs/buff_card_data.dart';
 import 'buffs/status_effects/burning.dart';
 import 'buffs/status_effects/slowed.dart';
@@ -44,7 +45,10 @@ class DefendTheTowerGame extends FlameGame with PointerMoveCallbacks, TapCallbac
   // ─── 游戏状态 ───
   int _hp = 100;
   int get hp => _hp;
-  int get maxHp => 100;
+  int get maxHp => 100 + TalentManager.instance.bonusHp;
+int _killCount = 0;
+int get killCount => _killCount;
+VoidCallback? onGameWon;
 
   int _exp = 0;
   int get exp => _exp;
@@ -212,6 +216,9 @@ class DefendTheTowerGame extends FlameGame with PointerMoveCallbacks, TapCallbac
     _buffManager = BuffManager()
       ..debugElementFilter = {Element.universal, Element.fire, Element.lightning, Element.mechanical}; // 🔧 测试用
     add(_buffManager!);
+    final tm = TalentManager.instance;
+    tm.startGame();
+    _hp = maxHp;
   }
 
   @override
@@ -763,6 +770,7 @@ class DefendTheTowerGame extends FlameGame with PointerMoveCallbacks, TapCallbac
     _exp += expGain;
     _notifyHud();
 
+    _killCount++;
     enemy.removeFromParent();
   }
 
@@ -1188,7 +1196,7 @@ class DefendTheTowerGame extends FlameGame with PointerMoveCallbacks, TapCallbac
     _level++;
     _paused = true;
     _buffState = 1;
-    _buffChoices = _buffManager!.generateChoices();
+    _buffChoices = _buffManager!.generateChoices(count: TalentManager.instance.buffChoiceCount);
     _notifyHud();
     onBuffSelectionChanged?.call();
   }
@@ -1211,6 +1219,14 @@ class DefendTheTowerGame extends FlameGame with PointerMoveCallbacks, TapCallbac
     _buffState = 0;
     _buffChoices = null;
     _paused = false;
+    _notifyHud();
+    onBuffSelectionChanged?.call();
+  }
+
+  void rerollBuffChoices() {
+    final tm = TalentManager.instance;
+    if (!tm.useReroll()) return;
+    _buffChoices = _buffManager!.generateChoices(count: tm.buffChoiceCount);
     _notifyHud();
     onBuffSelectionChanged?.call();
   }
@@ -1438,6 +1454,7 @@ class DefendTheTowerGame extends FlameGame with PointerMoveCallbacks, TapCallbac
     if (_waveClearing && enemies.isEmpty) {
       _gameWon = true;
       _notifyHud();
+      onGameWon?.call();
     }
   }
 
@@ -1449,6 +1466,7 @@ class DefendTheTowerGame extends FlameGame with PointerMoveCallbacks, TapCallbac
       return;
     }
     _wave++;
+    _exp += TalentManager.instance.bonusExpPerWave;
     _waveTimer = _wave == maxWave ? waveDuration * 2 : waveDuration;
     _enemyHpBonus += 0.25;
     _enemySpeedBonus += 0.08;
