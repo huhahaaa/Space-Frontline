@@ -4,9 +4,11 @@ import 'screens/main_menu.dart';
 import 'screens/level_select.dart';
 import 'screens/monsterpedia.dart';
 import 'screens/game_screen.dart';
+import 'game/talent_manager.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await TalentManager.instance.init();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(const DefendTheTowerApp());
