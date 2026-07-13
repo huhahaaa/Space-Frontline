@@ -1,0 +1,188 @@
+import 'dart:math';
+import 'package:flame/flame.dart';
+import 'package:flame/components.dart';
+import 'enemy.dart';
+import 'nurse_enemy.dart';
+import 'projectile.dart';
+import 'drone_bullet.dart';
+import '../buffs/status_effects/slowed.dart';
+
+/// 惊雷 — 躲避子弹，闪电链攻击友军，击杀后逐步强化
+/// HP = 普通敌人 ×1.5，移速 = 普通敌人 ×1.5
+class JingLeiEnemy extends Enemy {
+  JingLeiEnemy({
+    super.hpMultiplier = 1.0,
+    super.speedMultiplier = 1.0,
+  }) : super(variant: null) {
+    hp = Enemy.baseHp * hpMultiplier * 1.5;
+  }
+
+  @override
+  double get maxHp => super.maxHp * 1.5;
+
+  /// 基础移速倍率（击杀友军后会增加）
+  double _speedBonus = 0;
+  @override
+  double get speedFactor => 0.5 + _speedBonus;
+
+  /// 击杀友军计数
+  int _friendlyKills = 0;
+  static const int _maxKills = 3;
+
+  /// 是否已进入最终形态（3 击杀后）
+  bool get isFinalForm => _friendlyKills >= _maxKills;
+
+  @override
+  bool get homingResistant => true; // 子弹不追踪惊雷
+
+  // ─── 闪电链攻击友军 ───
+  static const double chainDamage = 5.0;
+  static const double chainInterval = 1.0; // 每秒一次
+  static const double chainRange = 200.0;
+  double _chainTimer = chainInterval; // 首击延迟缩短，生成后较快出手
+
+  // ─── 最终形态：50% 减伤 ───
+  @override
+  void takeDamage(double damage) {
+    if (isFinalForm) damage *= 0.5;
+    super.takeDamage(damage);
+  }
+
+  /// 是否免疫减速/吸引（最终形态）
+  bool get immuneToCrowdControl => isFinalForm;
+
+  // ─── 物理闪避 ───
+  static const double _dodgeDetectRadius = 120.0;
+  static const double _dodgeThreshold = 38.0;
+  static const double _dodgeSpeed = 90.0;
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    if (!isFinalForm) {
+      _chainTimer += dt;
+    } else {
+      firstChild<Slowed>()?.removeFromParent();
+    }
+    // 冻结/恐惧时不闪避
+    if (!isFrozen && !isFeared) {
+      _dodgeBullets(dt);
+    }
+  }
+
+  void _dodgeBullets(double dt) {
+    final g = findGame();
+    if (g == null) return;
+
+    Vector2 totalDodge = Vector2.zero();
+    int threats = 0;
+
+    for (final c in g.children) {
+      Vector2 bulletPos, bulletVel;
+      if (c is Projectile) {
+        bulletPos = c.position;
+        bulletVel = c.velocity;
+      } else if (c is DroneBullet) {
+        bulletPos = c.position;
+        bulletVel = c.direction * c.speed;
+      } else {
+        continue;
+      }
+
+      final toSelf = position - bulletPos;
+      final dist = toSelf.length;
+      if (dist > _dodgeDetectRadius) continue;
+
+      // 子弹是否在接近（点积 > 0 表示朝自身方向飞来）
+      final dot = toSelf.dot(bulletVel);
+      if (dot < 0) continue; // 远离中
+
+      // 预测最近点
+      final t = dot / bulletVel.dot(bulletVel);
+      if (t > 0.5) continue; // 太远，不必现在反应
+
+      final predicted = bulletPos + bulletVel * t;
+      final missDist = (position - predicted).length;
+      if (missDist > _dodgeThreshold) continue;
+
+      // 垂直于子弹方向的闪避向量
+      final perp = Vector2(-bulletVel.y, bulletVel.x)..normalize();
+      // 远离预测命中点的方向
+      if (perp.dot(position - predicted) < 0) {
+        perp.negate();
+      }
+
+      // 威胁越大闪避越强
+      totalDodge += perp * (1.0 - missDist / _dodgeThreshold);
+      threats++;
+    }
+
+    if (threats > 0 && totalDodge.length2 > 0.0001) {
+      totalDodge.normalize();
+      position += totalDodge * _dodgeSpeed * dt;
+    }
+  }
+
+  /// 是否应该在本帧触发闪电链攻击
+  bool shouldChainAttack() {
+    if (isDead || isFinalForm) return false;
+    if (_chainTimer >= chainInterval) {
+      _chainTimer = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /// 对最近的普通敌人发出闪电链
+  /// 返回 (target, wasKilled) 或 null
+  ({PositionComponent target, bool killed})? tryChainAttack(
+    Iterable<PositionComponent> allEnemies,
+  ) {
+    if (isDead || isFinalForm) return null;
+
+    // 找最近的普通敌人（排除自身和其他惊雷/精英/护士）
+    Enemy? nearest;
+    double nearestDist = double.infinity;
+    for (final e in allEnemies.whereType<Enemy>()) {
+      if (e == this) continue;
+      if (e is JingLeiEnemy || e is NurseEnemy) continue;
+      if (e.isDead) continue;
+      final d = e.position.distanceTo(position);
+      if (d < chainRange && d < nearestDist) {
+        nearestDist = d;
+        nearest = e;
+      }
+    }
+    if (nearest == null) return null;
+
+    // 造成伤害
+    nearest.takeDamage(chainDamage);
+    final wasKilled = nearest.isDead;
+
+    return (target: nearest, killed: wasKilled);
+  }
+
+  /// 记录击杀友军（由游戏调用）
+  void onFriendlyKilled() {
+    if (isFinalForm) return;
+    _friendlyKills++;
+    _speedBonus = _friendlyKills * 0.5;
+  }
+
+  @override
+  Future<void> onLoad() async {
+    final image = await Flame.images.load('enemy-3.png');
+    frames = List.generate(4, (i) {
+      return Sprite(
+        image,
+        srcPosition: Vector2(i * 32.0, 0),
+        srcSize: Vector2(32, 32),
+      );
+    });
+
+    final src = frames!.isNotEmpty ? frames![0].srcSize : Vector2(32, 32);
+    final scale = 38.4 / src.y;
+    size = Vector2(src.x * scale, src.y * scale);
+    anchor = Anchor.center;
+  }
+}

@@ -1,0 +1,46 @@
+name: defend_the_tower
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flame: ^1.26.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/background.jpg
+    - assets/images/Space Background_1.png
+    - assets/images/Space Background_2.png
+    - assets/images/Space Background_3.png
+    - assets/images/Space Background2.png
+    - assets/images/SpaceBackground.gif
+    - assets/images/spaceship.png
+    - assets/images/Turret.png
+    - assets/images/enemy-1.png
+    - assets/images/bullet_01.png
+    - assets/images/bullet_03.png
+    - assets/images/enemy-2.png
+    - assets/images/enemy-3.png
+    - assets/images/enemy-4/
+    - assets/images/drone-1.png
+    - assets/images/Planet1.gif
+    - assets/images/Planet2.gif
+    - assets/images/bullet-02.png
+    - assets/images/Hit_effect_01.png
+    - assets/images/BurningEffect.png
+    - assets/images/explosion/
+    - assets/images/lightning_chain/
+    - assets/images/lightning_strike/
+    - assets/images/fire_storm/
+    - assets/images/emp.png

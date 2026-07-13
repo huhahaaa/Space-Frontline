@@ -1,0 +1,103 @@
+<h2>🎮 塔防+肉鸽 — 修正布局（竖屏从上往下）</h2>
+<p class="subtitle">极简版（A方案）：固定塔位 + 自动射击 + 3技能 + 波次递增</p>
+
+<div class="section">
+  <h3>游戏画面布局（手机竖屏）</h3>
+  <div class="mockup">
+    <div class="mockup-header">怪物从屏幕顶部出现，向下进攻；塔在底部防守</div>
+    <div class="mockup-body">
+      <div style="display:flex;flex-direction:column;align-items:center;padding:12px;background:linear-gradient(180deg,#1a1a2e 0%,#0f3460 100%);border-radius:8px;max-width:320px;margin:0 auto;">
+
+        <!-- 顶部信息栏 -->
+        <div style="width:100%;display:flex;justify-content:space-between;color:#e0e0e0;font-size:11px;font-weight:bold;background:rgba(0,0,0,0.4);padding:8px 10px;border-radius:6px;margin-bottom:8px;">
+          <span>🌊 第 3/10 波</span>
+          <span>❤️ 20</span>
+          <span>💰 200</span>
+        </div>
+
+        <!-- 游戏战斗区域 -->
+        <div style="width:100%;height:280px;background:linear-gradient(180deg,#2d5016 0%,#1a3009 60%,#4a3728 100%);border-radius:6px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.15);">
+
+          <!-- 怪物出生点（顶部） -->
+          <div style="position:absolute;top:5px;left:50%;transform:translateX(-50%);font-size:8px;color:#ff4444;text-align:center;">
+            ═══ 👾 怪物入口 👾 ═══
+          </div>
+
+          <!-- 怪物们 - 从顶部往下走 -->
+          <div style="position:absolute;top:20px;left:80px;font-size:26px;">🧟</div>
+          <div style="position:absolute;top:40px;left:180px;font-size:26px;">🧟</div>
+          <div style="position:absolute;top:60px;left:120px;font-size:22px;">👾</div>
+          <div style="position:absolute;top:30px;left:200px;font-size:22px;">👾</div>
+
+          <!-- 子弹从底部射向顶部 -->
+          <div style="position:absolute;bottom:60px;left:110px;font-size:10px;color:#ff6b6b;">🔥↑</div>
+          <div style="position:absolute;bottom:70px;left:150px;font-size:10px;color:#6bcbff;">❄↑</div>
+          <div style="position:absolute;bottom:55px;left:170px;font-size:8px;color:#ffff6b;">⚡↑</div>
+
+          <!-- 路径/路线指示 -->
+          <div style="position:absolute;left:100px;top:80px;width:2px;height:100px;background:rgba(255,255,255,0.08);border-radius:1px;transform:rotate(-15deg);"></div>
+          <div style="position:absolute;left:160px;top:70px;width:2px;height:110px;background:rgba(255,255,255,0.06);border-radius:1px;transform:rotate(10deg);"></div>
+
+          <!-- 塔/角色（底部中央） -->
+          <div style="position:absolute;bottom:15px;left:50%;transform:translateX(-50%);">
+            <div style="font-size:36px;text-align:center;">🏰</div>
+            <div style="font-size:9px;color:#ffd700;text-align:center;margin-top:-4px;">防御塔</div>
+          </div>
+
+          <!-- 攻击范围指示 -->
+          <div style="position:absolute;bottom:70px;left:50%;transform:translateX(-50%);width:120px;height:120px;border:1px dashed rgba(255,215,0,0.2);border-radius:50%;pointer-events:none;"></div>
+        </div>
+
+        <!-- 底部技能栏 -->
+        <div style="width:100%;display:flex;gap:8px;justify-content:center;margin-top:8px;">
+          <div style="padding:8px 12px;background:rgba(255,107,107,0.15);border-radius:6px;font-size:10px;color:#ff6b6b;border:1px solid rgba(255,107,107,0.4);text-align:center;">
+            🔥<br>火球术<br><span style="color:#888;">冷却中</span>
+          </div>
+          <div style="padding:8px 12px;background:rgba(107,203,255,0.15);border-radius:6px;font-size:10px;color:#6bcbff;border:1px solid rgba(107,203,255,0.4);text-align:center;">
+            ❄️<br>冰冻术<br><span style="color:#4f4;">就绪</span>
+          </div>
+          <div style="padding:8px 12px;background:rgba(255,200,50,0.15);border-radius:6px;font-size:10px;color:#ffc832;border:1px solid rgba(255,200,50,0.4);text-align:center;">
+            ⚡<br>闪电链<br><span style="color:#4f4;">就绪</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>核心玩法循环</h3>
+  <div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:16px;background:rgba(0,0,0,0.2);border-radius:8px;text-align:center;">
+    <div style="padding:10px 16px;background:#2d5016;border-radius:6px;color:#fff;font-size:13px;">🧟 怪物<br>从顶部出现</div>
+    <span style="font-size:20px;color:#ffd700;">→</span>
+    <div style="padding:10px 16px;background:#4a3728;border-radius:6px;color:#fff;font-size:13px;">🏰 防御塔<br>自动射击</div>
+    <span style="font-size:20px;color:#ffd700;">→</span>
+    <div style="padding:10px 16px;background:#1a3a5c;border-radius:6px;color:#fff;font-size:13px;">💰 击杀<br>获得金币</div>
+    <span style="font-size:20px;color:#ffd700;">→</span>
+    <div style="padding:10px 16px;background:#5c1a3a;border-radius:6px;color:#fff;font-size:13px;">🎴 选技能卡<br>强化能力</div>
+    <span style="font-size:20px;color:#ffd700;">→</span>
+    <div style="padding:10px 16px;background:#3a2d50;border-radius:6px;color:#fff;font-size:13px;">🌊 下一波<br>更强敌人</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>极简版包含 vs 不含</h3>
+  <table style="width:100%;border-collapse:collapse;color:#ccc;font-size:13px;">
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+      <td style="padding:8px;color:#4f4;">✅ 固定塔位在底部</td>
+      <td style="padding:8px;color:#4f4;">✅ 自动普攻</td>
+      <td style="padding:8px;color:#4f4;">✅ 3种主动技能</td>
+    </tr>
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+      <td style="padding:8px;color:#4f4;">✅ 怪物从顶部出现</td>
+      <td style="padding:8px;color:#4f4;">✅ 波次系统(10波)</td>
+      <td style="padding:8px;color:#4f4;">✅ 波间选技能卡</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;color:#f44;">❌ 角色移动</td>
+      <td style="padding:8px;color:#f44;">❌ 多类型塔</td>
+      <td style="padding:8px;color:#f44;">❌ 关卡/装备</td>
+    </tr>
+  </table>
+</div>
