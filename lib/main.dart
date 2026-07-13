@@ -5,6 +5,7 @@ import 'screens/level_select.dart';
 import 'screens/monsterpedia.dart';
 import 'screens/talent_page.dart';
 import 'screens/game_screen.dart';
+import 'screens/victory_screen.dart';
 import 'game/talent_manager.dart';
 
 void main() async {
@@ -42,6 +43,19 @@ class DefendTheTowerApp extends StatelessWidget {
             startWave = args;
           }
           return GameScreen(startWave: startWave, backgroundName: backgroundName);
+        },
+        '/victory': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
+          if (args is Map) {
+            return VictoryScreen(
+              hp: args['hp'] as int,
+              maxHp: args['maxHp'] as int,
+              kills: args['kills'] as int,
+              wave: args['wave'] as int,
+              levelId: args['levelId'] as String? ?? 'stage_1',
+            );
+          }
+          return const VictoryScreen(hp: 0, maxHp: 100, kills: 0, wave: 0);
         },
       },
     );

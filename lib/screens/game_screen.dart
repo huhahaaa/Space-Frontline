@@ -28,6 +28,22 @@ class _GameScreenState extends State<GameScreen> {
       backgroundName: (bgName != null && bgName.endsWith('.gif')) ? null : bgName,
     );
     _game.onBuffSelectionChanged = _onBuffStateChanged;
+
+    // Victory navigation
+    _game.onGameWon = () {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/victory', arguments: {
+            'hp': _game.hp,
+            'maxHp': _game.maxHp,
+            'kills': _game.killCount,
+            'wave': _game.wave,
+            'levelId': 'stage_1',
+          });
+        }
+      });
+    };
+
     // 锁定竖屏
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -245,40 +261,7 @@ class _GameHudState extends State<_GameHud> {
           ),
         ),
 
-        // ── 胜利 / 失败 ──
-        if (_data.gameWon)
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withAlpha(180),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('🎉', style: TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    const Text(
-                      '胜利！',
-                      style: TextStyle(
-                          color: Color(0xFFFFD700),
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '成功抵御外星入侵',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: widget.onBack,
-                      child: const Text('返回主菜单'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
+        // ── 失败 ──
         if (_data.gameOver)
           Positioned.fill(
             child: Container(
