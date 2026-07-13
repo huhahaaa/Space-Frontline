@@ -24,9 +24,9 @@ class Wall extends PositionComponent {
 
   @override
   Future<void> onLoad() async {
-    _spriteFull = await Sprite.load('wall_1.png');
-    _spriteMid = await Sprite.load('wall_2.png');
-    _spriteLow = await Sprite.load('Wall_3.png');
+    _spriteFull = await Sprite.load('Wall/wall_1.png');
+    _spriteMid = await Sprite.load('Wall/wall_2.png');
+    _spriteLow = await Sprite.load('Wall/Wall_3.png');
   }
 
   /// 由 game 在 resize 时调用，设置城墙宽高
