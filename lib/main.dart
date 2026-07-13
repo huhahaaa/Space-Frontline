@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'screens/main_menu.dart';
 import 'screens/level_select.dart';
 import 'screens/monsterpedia.dart';
+import 'screens/talent_page.dart';
 import 'screens/game_screen.dart';
 import 'game/talent_manager.dart';
 
@@ -29,6 +30,7 @@ class DefendTheTowerApp extends StatelessWidget {
         '/': (_) => const MainMenuScreen(),
         '/levelSelect': (_) => const LevelSelectScreen(),
         '/monsterpedia': (_) => const MonsterpediaScreen(),
+        '/talent': (_) => const TalentPage(),
         '/game': (context) {
           final args = ModalRoute.of(context)?.settings.arguments;
           int? startWave;

@@ -47,6 +47,12 @@ class MainMenuScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   _MenuButton(
+                    icon: '⭐',
+                    label: '天赋',
+                    onTap: () => Navigator.pushNamed(context, '/talent'),
+                  ),
+                  const SizedBox(height: 16),
+                  _MenuButton(
                     icon: '📖',
                     label: '怪物图鉴',
                     onTap: () => Navigator.pushNamed(context, '/monsterpedia'),
