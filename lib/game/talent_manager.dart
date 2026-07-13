@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// 天赋标识枚举
 enum TalentId {
-  reinforcedArmor,   // 城墙加固：初始耐久 +20
+  reinforcedArmor,   // 加固装甲：初始血量 +20
   expandedChoices,   // 选择扩充：buff 选择 3→4
   expDrain,          // 经验汲取：每波额外 +10 经验
   freeReroll,        // 重抽机会：每局 1 次免费重抽

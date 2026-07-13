@@ -133,7 +133,7 @@ class _GameScreenState extends State<GameScreen> {
           right: 0,
           child: SafeArea(
             child: Text(
-              '🤖 炮塔/无人机自动瞄准 · 🏰 城墙守卫',
+              '🤖 炮塔/无人机自动瞄准',
               textAlign: TextAlign.center,
               style: TextStyle(color: Color(0x55FFFFFF), fontSize: 9),
             ),
@@ -300,7 +300,7 @@ class _GameHudState extends State<_GameHud> {
             ),
           ),
 
-        // ── 底部：城墙血条 ──
+        // ── 正下方中央：炮塔血条 ──
         Positioned(
           bottom: 20,
           left: 12,
@@ -309,24 +309,14 @@ class _GameHudState extends State<_GameHud> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 标签
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('🏰', style: TextStyle(fontSize: 11)),
-                        const SizedBox(width: 3),
-                        Text('城墙 ${_data.hp} / ${_data.maxHp}',
-                            style: TextStyle(
-                                color: hpPercent > 0.4
-                                    ? Colors.white70
-                                    : Colors.redAccent,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600)),
-                      ],
-                    ),
+                    Text('🏰 ${_data.hp} / ${_data.maxHp}',
+                        style: TextStyle(
+                            color: hpPercent > 0.4 ? Colors.white70 : Colors.redAccent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600)),
                     Text(
                       hpPercent >= 1.0 ? '完好' : hpPercent >= 0.4 ? '受损' : '危急',
                       style: TextStyle(
@@ -341,7 +331,6 @@ class _GameHudState extends State<_GameHud> {
                   ],
                 ),
                 const SizedBox(height: 3),
-                // 血条本体
                 Container(
                   width: double.infinity,
                   height: 12,
