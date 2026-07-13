@@ -148,7 +148,7 @@ class _MonsterpediaScreenState extends State<MonsterpediaScreen> {
                       skill: '弧线冲刺闪避子弹（0.75s CD，冲刺中无敌）\n'
                           '闪电链攻击 300px 内友军（5 伤害/秒）\n'
                           '击杀 3 友军 → 最终形态：50% 减伤、免疫减速\n'
-                          '只向前闪避（3s CD）、触及炮塔伤害 10',
+                          '只向前闪避（3s CD）、触及城墙伤害 10',
                       description: '',
                       child: _jingLeiAnim != null
                           ? _AnimatedPreview(animation: _jingLeiAnim!)

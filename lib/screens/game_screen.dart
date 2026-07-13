@@ -133,7 +133,7 @@ class _GameScreenState extends State<GameScreen> {
           right: 0,
           child: SafeArea(
             child: Text(
-              '🤖 炮塔/无人机自动瞄准',
+              '🤖 炮塔/无人机自动瞄准 · 🏰 城墙守卫',
               textAlign: TextAlign.center,
               style: TextStyle(color: Color(0x55FFFFFF), fontSize: 9),
             ),
@@ -300,38 +300,72 @@ class _GameHudState extends State<_GameHud> {
             ),
           ),
 
-        // ── 正下方中央：血条 ──
+        // ── 底部：城墙血条 ──
         Positioned(
-          bottom: 24,
-          left: 0,
-          right: 0,
+          bottom: 20,
+          left: 12,
+          right: 12,
           child: SafeArea(
-            child: Center(
-              child: SizedBox(
-                width: 90,
-                child: Container(
-                  height: 10,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 标签
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('🏰', style: TextStyle(fontSize: 11)),
+                        const SizedBox(width: 3),
+                        Text('城墙 ${_data.hp} / ${_data.maxHp}',
+                            style: TextStyle(
+                                color: hpPercent > 0.4
+                                    ? Colors.white70
+                                    : Colors.redAccent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    Text(
+                      hpPercent >= 1.0 ? '完好' : hpPercent >= 0.4 ? '受损' : '危急',
+                      style: TextStyle(
+                          color: hpPercent >= 1.0
+                              ? Colors.greenAccent
+                              : hpPercent >= 0.4
+                                  ? Colors.orangeAccent
+                                  : Colors.redAccent,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                // 血条本体
+                Container(
+                  width: double.infinity,
+                  height: 12,
                   decoration: BoxDecoration(
-                    color: Colors.black.withAlpha(160),
+                    color: Colors.black.withAlpha(180),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.redAccent.withAlpha(120)),
+                    border: Border.all(color: Colors.white.withAlpha(50), width: 1),
                   ),
                   child: FractionallySizedBox(
                     alignment: Alignment.centerLeft,
                     widthFactor: hpPercent,
                     child: Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(5),
                         gradient: LinearGradient(
-                          colors: hpPercent > 0.3
-                              ? [const Color(0xFFCC3333), const Color(0xFFFF5555)]
-                              : [const Color(0xFF880000), const Color(0xFFCC2222)],
+                          colors: hpPercent > 0.4
+                              ? [const Color(0xFFCC3333), const Color(0xFFFF6644)]
+                              : [const Color(0xFF880000), const Color(0xFFFF2222)],
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ),

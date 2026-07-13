@@ -4,6 +4,7 @@ import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flutter/material.dart' hide PointerMoveEvent, Element;
 import 'components/tower.dart';
+import 'components/wall.dart';
 import 'components/enemy.dart';
 import 'components/projectile.dart';
 
@@ -116,6 +117,7 @@ VoidCallback? onGameWon;
   static const double fireInterval = 0.5;
 
   Tower? _tower;
+  Wall? _wall;
 
   // ─── 无人机 ───
   final List<Drone> _drones = [];
@@ -210,6 +212,7 @@ VoidCallback? onGameWon;
     }
     _setupBackground();
     _spawnTower();
+    _spawnWall();
     await LightningChain.preload();
     await LightningStrike.preload();
     await EmpWave.preload();
@@ -219,12 +222,14 @@ VoidCallback? onGameWon;
     final tm = TalentManager.instance;
     tm.startGame();
     _hp = maxHp;
+    _wall?.updateHp(_hp, maxHp);
   }
 
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
     _setupBackground();
+    _repositionWall();
     _repositionTowerAndDrones();
     _updateEliteStopPositions();
   }
@@ -238,7 +243,9 @@ VoidCallback? onGameWon;
 
   void _repositionTowerAndDrones() {
     if (_tower == null) return;
-    _tower!.position = Vector2(size.x / 2, size.y * 0.92);
+    // 塔站在城墙上方
+    final wallH = _wall?.size.y ?? 0;
+    _tower!.position = Vector2(size.x / 2, size.y - wallH - 10);
     _layoutDrones();
   }
 
@@ -269,8 +276,20 @@ VoidCallback? onGameWon;
   // ─── 塔 ───
   void _spawnTower() {
     _tower = Tower();
-    _tower!.position = Vector2(size.x / 2, size.y * 0.92);
+    _repositionTowerAndDrones();
     add(_tower!);
+  }
+
+  void _spawnWall() {
+    _wall = Wall();
+    _wall!.updateHp(_hp, maxHp);
+    _repositionWall();
+    add(_wall!);
+  }
+
+  void _repositionWall() {
+    if (_wall == null) return;
+    _wall!.setScreenSize(size.x, size.y);
   }
 
   // ─── 无人机 ───
@@ -875,6 +894,7 @@ VoidCallback? onGameWon;
     if (Random().nextDouble() >= bm.bloodthirstChance) return;
     final healAmount = (maxHp * bm.bloodthirstHealPercent).round();
     _hp = (_hp + healAmount).clamp(0, maxHp);
+    _wall?.updateHp(_hp, maxHp);
     if (bm.bloodthirstRage) {
       bm.triggerBloodRage();
     }
@@ -1159,10 +1179,12 @@ VoidCallback? onGameWon;
     add(DeathExplosion(at: explosionPos));
     final dmg = (enemy is JingLeiEnemy && enemy.isFinalForm) ? 10 : 5;
     _hp -= dmg;
+    _wall?.updateHp(_hp, maxHp);
     _notifyHud();
     enemy.removeFromParent();
     if (_hp <= 0) {
       _hp = 0;
+      _wall?.updateHp(_hp, maxHp);
       _gameOver = true;
       _notifyHud();
     }

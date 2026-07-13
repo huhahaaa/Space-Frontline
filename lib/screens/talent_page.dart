@@ -11,7 +11,7 @@ class TalentPage extends StatefulWidget {
 
 class _TalentPageState extends State<TalentPage> {
   static const _nodes = <_TalentNode>[
-    _TalentNode(0, -1, TalentId.reinforcedArmor, '加固装甲', '🛡️', '初始血量 +20'),
+    _TalentNode(0, -1, TalentId.reinforcedArmor, '城墙加固', '🏰', '城墙初始耐久 +20'),
     _TalentNode(1, -1, TalentId.expandedChoices, '选择扩充', '📋', '升级时 buff 选择 3→4 张'),
     _TalentNode(1, 0, TalentId.expDrain, '经验汲取', '📊', '每波额外 +10 经验'),
     _TalentNode(0, 1, TalentId.freeReroll, '重抽机会', '🔄', '每局可免费重抽 buff 1 次'),
