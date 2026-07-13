@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../game/defend_the_tower_game.dart';
 import '../game/buffs/buff_registry.dart' hide Element;
 import '../game/buffs/buff_registry.dart' as be show Element;
+import '../game/talent_manager.dart';
 import 'widgets/buff_card_overlay.dart';
 import 'widgets/buff_stash_bar.dart';
 
@@ -93,6 +94,10 @@ class _GameScreenState extends State<GameScreen> {
                   currentLevels: data.activeBuffs,
                   onSelected: (id) => _game.selectBuff(id),
                   onSkip: () => _game.skipBuff(),
+                  onReroll: TalentManager.instance.rerollsRemaining > 0
+                      ? () => _game.rerollBuffChoices()
+                      : null,
+                  rerollsRemaining: TalentManager.instance.rerollsRemaining,
                 ),
               );
             }

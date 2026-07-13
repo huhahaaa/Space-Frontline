@@ -6,6 +6,8 @@ class BuffCardOverlay extends StatelessWidget {
   final Map<BuffId, int> currentLevels;
   final void Function(BuffId id) onSelected;
   final VoidCallback onSkip;
+  final VoidCallback? onReroll;
+  final int rerollsRemaining;
 
   const BuffCardOverlay({
     super.key,
@@ -13,6 +15,8 @@ class BuffCardOverlay extends StatelessWidget {
     required this.currentLevels,
     required this.onSelected,
     required this.onSkip,
+    this.onReroll,
+    this.rerollsRemaining = 0,
   });
 
   @override
@@ -35,6 +39,24 @@ class BuffCardOverlay extends StatelessWidget {
             for (int i = 0; i < choices.length; i++) ...[
               _buildCard(context, choices[i]),
               if (i < choices.length - 1) const SizedBox(height: 12),
+            ],
+            if (onReroll != null && rerollsRemaining > 0) ...[
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: onReroll,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A3340),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0x88FFD700)),
+                  ),
+                  child: Text(
+                    '🔄 重抽 ($rerollsRemaining)',
+                    style: const TextStyle(color: Color(0xFFFFD700), fontSize: 14),
+                  ),
+                ),
+              ),
             ],
             const SizedBox(height: 24),
             TextButton(
