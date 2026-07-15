@@ -35,7 +35,10 @@ class Enemy extends PositionComponent {
 
   bool get isDead => hp <= 0;
   bool get homingResistant => false; // 惊雷覆盖，禁用子弹追踪
-  int expValue = 10;
+  int get expValue => 10;
+
+  /// 标记为惊雷的"电池"敌人 — 不计击杀数、不掉落、不获得经验
+  bool isBattery = false;
 
   // ─── 精灵（子类可访问）───
   Sprite? enemySprite;
@@ -65,6 +68,9 @@ class Enemy extends PositionComponent {
   void takeDamage(double damage) {
     hp -= damage;
   }
+
+  /// 预览实际生效伤害（子类覆写以反映减伤/无敌，用于伤害数字显示）
+  double effectiveDamage(double incoming) => isDead ? 0 : incoming;
 
   // ─── 每帧更新 ───
   @override

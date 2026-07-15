@@ -2,14 +2,15 @@ import 'dart:ui';
 import 'package:flame/components.dart';
 import 'enemy.dart';
 import 'elite_enemy.dart';
+import 'elite_trait.dart';
 import '../buffs/status_effects/burning.dart';
 import '../buffs/status_effects/shocked.dart';
 import '../buffs/status_effects/slowed.dart';
 import '../buffs/status_effects/purge_protected.dart';
 
-/// 护士敌人 — 第 5 波后出现，每 2.5s 净化 + 治疗周围敌人（含自身）
+/// 护士敌人 — 第 4 波后出现，每 2.5s 净化 + 治疗周围敌人（含自身）
 /// HP = 普通敌人 ×1.5，移速 = 普通敌人 ×0.5
-class NurseEnemy extends Enemy {
+class NurseEnemy extends Enemy with EliteTrait {
   NurseEnemy({
     super.hpMultiplier = 1.0,
     super.speedMultiplier = 1.0,
@@ -23,6 +24,9 @@ class NurseEnemy extends Enemy {
 
   @override
   double get speedFactor => 0.5;
+
+  @override
+  int get expValue => 30; // 精英级经验
 
   // ─── 净化 + 治疗光环（每 2.5s 跳一次）───
   static const double purgeRadius = 100.0;

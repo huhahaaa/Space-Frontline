@@ -3,10 +3,9 @@ import 'dart:ui';
 import 'package:flame/flame.dart';
 import 'package:flame/components.dart';
 import 'enemy.dart';
-import 'nurse_enemy.dart';
+import 'elite_trait.dart';
 import 'projectile.dart';
 import 'drone_bullet.dart';
-import '../buffs/status_effects/slowed.dart';
 
 /// 闪避状态机
 enum _DodgeState { idle, dodging, cooldown }
@@ -32,9 +31,18 @@ class _DodgeParticle {
   });
 }
 
-/// 惊雷 — 躲避子弹，闪电链攻击友军，击杀后逐步强化
-/// HP = 普通敌人 ×1.5，移速 = 普通敌人 ×1.5
-class JingLeiEnemy extends Enemy {
+/// 惊雷 — 汲取三角阵中的电池敌人，完成后获得移速/减伤/闪避
+///
+/// **阶段一（汲取阶段）**：惊雷 + 3 电池以 0.5x 移速向下移动。
+/// 每 1.0s 汲取一个电池（电池死亡），惊雷获得一份增益。
+/// 玩家可在间隔中击杀电池，减少惊雷最终增益。
+/// 汲取阶段惊雷不闪避、不减伤。
+///
+/// **阶段二（最终形态）**：根据实际汲取次数获得一次性属性：
+/// - 移速 = 0.5 + 汲取数 * 0.5
+/// - 减伤 = 0% / 20% / 35% / 50%（汲取 0/1/2/3）
+/// - 闪避 CD = 1.25 / 1.0 / 0.85 / 0.75s
+class JingLeiEnemy extends Enemy with EliteTrait {
   JingLeiEnemy({
     super.hpMultiplier = 1.0,
     super.speedMultiplier = 1.0,
@@ -45,48 +53,97 @@ class JingLeiEnemy extends Enemy {
   @override
   double get maxHp => super.maxHp * 1.5;
 
-  /// 基础移速倍率（击杀友军后会增加）
-  double _speedBonus = 0;
+  // ─── 汲取阶段 ───
+  final List<Enemy> _linkedEnemies = [];
+  int _drainCount = 0;
+  double _drainTimer = 0;
+  static const double _drainInterval = 1.0;
+  bool _drainPhaseComplete = false;
+
+  /// 汲取阶段中惊雷是否静止等待（汲取完成前不移动，完成后开始向下）
+  bool get isDrainPhaseComplete => _drainPhaseComplete;
+
+  /// 汲取数量（0~3）
+  int get drainCount => _drainCount;
+
+  /// 汲取动画回调（由游戏侧设置，用于添加 DrainArrow）
+  void Function(Vector2 position)? onDrain;
+
+  /// 电池被汲取死亡回调（由游戏侧设置，用于添加 DeathExplosion）
+  void Function(Vector2 position)? onBatteryDrained;
+
+  /// 由游戏调用，注册一个电池敌人
+  void registerLinkedEnemy(Enemy e) {
+    _linkedEnemies.add(e);
+  }
+
+  /// 由游戏调用，当电池被玩家击杀时通知惊雷
+  void onLinkedEnemyKilledByPlayer(Enemy e) {
+    // 电池已被玩家击杀 — 从汲取队列中自然排除
+    // _drainNextEnemy 中会跳过已死亡的电池
+  }
+
+  // ─── 移速 ───
+  double _speedBonus = 0; // 汲取完成后一次性设置
   @override
-  double get speedFactor => 0.5 + _speedBonus;
-
-  /// 击杀友军计数
-  int _friendlyKills = 0;
-  static const int _maxKills = 3;
-
-  /// 是否已进入最终形态（3 击杀后）
-  bool get isFinalForm => _friendlyKills >= _maxKills;
+  double get speedFactor {
+    if (!_drainPhaseComplete) return 0.5; // 汲取阶段固定 0.5x
+    return 0.5 + _speedBonus;
+  }
 
   @override
-  bool get homingResistant => true; // 子弹不追踪惊雷
+  bool get homingResistant => true;
 
-  // ─── 闪电链攻击友军 ───
-  static const double chainDamage = 5.0;
-  static const double chainInterval = 1.0; // 每秒一次
-  static const double chainRange = 300.0;
-  double _chainTimer = chainInterval; // 首击延迟缩短，生成后较快出手
+  @override
+  int get expValue => 30; // 精英级经验
 
-  // ─── 最终形态：50% 减伤 ───
+  // ─── 减伤（按汲取数梯度）───
+  double get _damageReduction {
+    switch (_drainCount) {
+      case 0: return 0.0;
+      case 1: return 0.20;
+      case 2: return 0.35;
+      case 3: return 0.50;
+      default: return 0.50;
+    }
+  }
+
   @override
   void takeDamage(double damage) {
-    // 冲刺期间无敌
     if (_dodgeState == _DodgeState.dodging) return;
-    if (isFinalForm) damage *= 0.5;
+    if (_drainPhaseComplete && _damageReduction > 0) {
+      damage *= (1.0 - _damageReduction);
+    }
     super.takeDamage(damage);
   }
 
-  /// 是否免疫减速/吸引（最终形态）
-  bool get immuneToCrowdControl => isFinalForm;
+  @override
+  double effectiveDamage(double incoming) {
+    if (isDead || _dodgeState == _DodgeState.dodging) return 0;
+    if (_drainPhaseComplete && _damageReduction > 0) {
+      return incoming * (1.0 - _damageReduction);
+    }
+    return incoming;
+  }
 
-  // ─── 物理闪避 ───
+  // ─── 闪避 ───
   static const double _dodgeDetectRadius = 120.0;
   static const double _dodgeThreshold = 38.0;
 
-  // ─── 闪避状态机 ───
   _DodgeState _dodgeState = _DodgeState.idle;
   double _dodgeTimer = 0;
   static const double _dodgeDuration = 0.18;
-  double get _cooldownDuration => isFinalForm ? 3.0 : 0.75;
+
+  /// 闪避 CD（按汲取数梯度）
+  double get _cooldownDuration {
+    switch (_drainCount) {
+      case 0: return 1.25;
+      case 1: return 1.0;
+      case 2: return 0.85;
+      case 3: return 0.75;
+      default: return 0.75;
+    }
+  }
 
   // ─── 弧线冲刺参数 ───
   Vector2 _dodgeStartPos = Vector2.zero();
@@ -113,12 +170,17 @@ class JingLeiEnemy extends Enemy {
   @override
   void update(double dt) {
     super.update(dt);
-    if (!isFinalForm) {
-      _chainTimer += dt;
-    } else {
-      firstChild<Slowed>()?.removeFromParent();
+
+    // ─── 汲取阶段计时 ───
+    if (!_drainPhaseComplete) {
+      _drainTimer += dt;
+      if (_drainTimer >= _drainInterval) {
+        _drainTimer = 0;
+        _drainNextEnemy();
+      }
     }
-    // 始终更新残影年龄和粒子（无论闪避状态）
+
+    // ─── 残影 + 粒子（始终更新）───
     for (final a in _afterimages) {
       a.age += dt;
     }
@@ -129,12 +191,60 @@ class JingLeiEnemy extends Enemy {
     }
     _particles.removeWhere((p) => p.life <= 0);
 
-    // 冻结/恐惧时不启动新闪避，但允许完成正在进行的冲刺
-    if (!isFrozen && !isFeared) {
-      _dodgeBullets(dt);
-    } else if (_dodgeState == _DodgeState.dodging) {
-      _updateDodging(dt);
+    // ─── 闪避：仅在最终形态启用 ───
+    if (_drainPhaseComplete) {
+      if (!isFrozen && !isFeared) {
+        _dodgeBullets(dt);
+      } else if (_dodgeState == _DodgeState.dodging) {
+        _updateDodging(dt);
+      }
     }
+  }
+
+  /// 汲取下一个活着的电池
+  void _drainNextEnemy() {
+    // 找第一个还活着的电池
+    Enemy? target;
+    for (final e in _linkedEnemies) {
+      if (!e.isDead) {
+        target = e;
+        break;
+      }
+    }
+    if (target == null) {
+      // 所有电池都已死亡 → 进入最终形态
+      _finalizeDrainPhase();
+      return;
+    }
+
+    // 汲取：秒杀电池（不显示伤害数字）
+    final batteryPos = target.position.clone();
+    target.takeDamage(9999);
+    _drainCount++;
+
+    // 触发汲取箭头动画
+    onDrain?.call(position.clone());
+
+    // 电池死亡爆炸
+    onBatteryDrained?.call(batteryPos);
+
+    // 移除电池（DrainLink 会自检死亡并自移除）
+    target.removeFromParent();
+
+    // 检查是否所有电池都死了
+    final allDead = _linkedEnemies.every((e) => e.isDead);
+    if (allDead) {
+      _finalizeDrainPhase();
+    }
+  }
+
+  /// 汲取阶段结束 → 一次性应用最终属性
+  void _finalizeDrainPhase() {
+    _drainPhaseComplete = true;
+    _speedBonus = _drainCount * 0.5;
+
+    // 清除所有残留的电池引用中的闪电链（DrainLink 会自动检测死亡并自移除）
+    _linkedEnemies.clear();
   }
 
   @override
@@ -148,8 +258,6 @@ class JingLeiEnemy extends Enemy {
     // ── 绘制本体（带冲刺缩放微弹）──
     canvas.save();
     if (_scaleBounce != 1.0) {
-      // Anchor.center: canvas origin is top-left of component
-      // Scale around center = translate to center, scale, translate back
       canvas.translate(size.x / 2, size.y / 2);
       canvas.scale(_scaleBounce, _scaleBounce);
       canvas.translate(-size.x / 2, -size.y / 2);
@@ -162,6 +270,20 @@ class JingLeiEnemy extends Enemy {
       final overlay = Paint()
         ..color = Color.fromRGBO(160, 120, 255, 0.25);
       canvas.drawRect(size.toRect(), overlay);
+    }
+
+    // ── 汲取阶段视觉标记：闪电光环 ──
+    if (!_drainPhaseComplete && !isDead) {
+      final ringPaint = Paint()
+        ..color = const Color(0xFFFFD740).withValues(alpha: 0.12 + 0.08 * (_drainTimer % 1.0))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(
+        Offset(size.x / 2, size.y / 2),
+        size.x * 0.85,
+        ringPaint,
+      );
     }
   }
 
@@ -186,7 +308,6 @@ class JingLeiEnemy extends Enemy {
     }
 
     // IDLE 状态：收集威胁 + 生成多候选闪避方向
-    // 收集所有威胁子弹（不只是最近的一个）
     final threats = <({Vector2 pos, Vector2 vel, Vector2 predicted})>[];
     for (final c in g.children) {
       Vector2 bulletPos, bulletVel;
@@ -218,47 +339,40 @@ class JingLeiEnemy extends Enemy {
     }
 
     if (threats.isNotEmpty) {
-      // 生成候选闪避方向
       final candidates = <Vector2>[];
       for (final threat in threats) {
-        // 后退方向：远离子弹来向
-        final backDir = (position - threat.pos);
-        if (backDir.length > 0.001) {
-          candidates.add(backDir.normalized());
-        }
-        // 垂直于子弹飞行方向的两个方向
         final bulletDir = threat.vel.normalized();
-        candidates.add(Vector2(-bulletDir.y, bulletDir.x));   // 垂直左
-        candidates.add(Vector2(bulletDir.y, -bulletDir.x));   // 垂直右
+        candidates.add(Vector2(-bulletDir.y, bulletDir.x));
+        candidates.add(Vector2(bulletDir.y, -bulletDir.x));
       }
 
-      // 获取地图边界
+      final diagCandidates = [
+        Vector2(-0.707, 0.707),
+        Vector2(0.707, 0.707),
+        Vector2(-0.707, -0.707),
+        Vector2(0.707, -0.707),
+        Vector2(-1.0, 0.0),
+        Vector2(1.0, 0.0),
+      ];
+      candidates.addAll(diagCandidates);
+
       final gameSize = g.size;
-      const margin = 40.0; // 留边距防止贴边
+      const margin = 40.0;
       const dashDist = 80.0;
 
-      // 底线附近：禁止向上闪避（不能退缩，只能横移或继续向下）
-      final nearBottom = position.y > gameSize.y * 0.80;
-
-      // 筛选 + 评分：终点必须在地图内，选离所有威胁最远的
       Vector2? bestDodgeDir;
       double bestScore = -double.infinity;
       for (final dir in candidates) {
-        // 底线附近排除向上的方向（远离炮塔 = 退缩，不允许）
-        if (nearBottom && dir.y < -0.3) continue;
-        // 最终形态：只向前（向下，向炮塔）闪避
-        if (isFinalForm && dir.y < 0) continue;
+        if (dir.y < -0.5 && dir.x.abs() < 0.4) continue;
 
         final endPos = position + dir * dashDist;
-        // 边界检查
         if (endPos.x < margin || endPos.x > gameSize.x - margin) continue;
         if (endPos.y < margin || endPos.y > gameSize.y - margin) continue;
 
-        // 综合评分：对所有威胁的加权距离（越近的威胁权重越大）
         double score = 0;
         for (final t in threats) {
           final d = (endPos - t.predicted).length;
-          score += d * d; // 平方加权，偏好远离最近的威胁
+          score += d * d;
         }
         if (score > bestScore) {
           bestScore = score;
@@ -266,13 +380,10 @@ class JingLeiEnemy extends Enemy {
         }
       }
 
-      // 如果没有方向能完全在地图内，选一个最不坏的（允许 clamp）
       if (bestDodgeDir == null) {
-        // 重试：选综合评分最高的方向，即使可能出界
         for (final dir in candidates) {
           double score = 0;
           final endPos = position + dir * dashDist;
-          // 越界惩罚
           double boundPenalty = 0;
           if (endPos.x < 0) boundPenalty += (0 - endPos.x) * 5;
           if (endPos.x > gameSize.x) boundPenalty += (endPos.x - gameSize.x) * 5;
@@ -296,53 +407,42 @@ class JingLeiEnemy extends Enemy {
     }
   }
 
-  /// easeOut 缓动函数（先快后慢）
   double _easeOut(double t) {
     return 1.0 - (1.0 - t) * (1.0 - t);
   }
 
-  /// 启动弧线冲刺
-  /// [evadeDir] — 选定的闪避方向单位向量
-  /// [gameSize] — 地图尺寸，用于边界 clamp
   void _startDodge(Vector2 evadeDir, Vector2 gameSize) {
     _dodgeState = _DodgeState.dodging;
     _dodgeTimer = 0;
     _dodgeStartPos = position.clone();
     _dodgeDirection = evadeDir.clone();
 
-    // 终点：起点 + evadeDir * 80px（clamp 到地图边界内）
     const dashDist = 80.0;
     var endPos = _dodgeStartPos + evadeDir * dashDist;
-    final margin = size.x; // 留一个自身宽度
+    final margin = size.x;
     endPos.x = endPos.x.clamp(margin, gameSize.x - margin);
     endPos.y = endPos.y.clamp(margin, gameSize.y - margin);
     _dodgeEndPos = endPos;
 
-    // 控制点：中点 + 垂直于闪避方向的随机侧向偏移（产生真正的弧线！）
     final mid = (_dodgeStartPos + _dodgeEndPos) * 0.5;
-    final perp = Vector2(-evadeDir.y, evadeDir.x); // 垂直于闪避方向
-    // 随机侧向偏移 ±25px，方向随机
+    final perp = Vector2(-evadeDir.y, evadeDir.x);
     final sideOffset = (_rng.nextDouble() - 0.5) * 2 * 25.0;
     _dodgeControlPoint = mid + perp * sideOffset;
 
-    // 清空残影和粒子
     _afterimages.clear();
     _afterimageSampleAccum = 0;
     _particles.clear();
     _particleEmitAccum = 0;
 
-    // 重置缩放
     _scaleBounce = 1.0;
   }
 
-  /// 每帧更新冲刺逻辑
   void _updateDodging(double dt) {
     _dodgeTimer += dt;
 
     final t = (_dodgeTimer / _dodgeDuration).clamp(0.0, 1.0);
     final easedT = _easeOut(t);
 
-    // 二次贝塞尔曲线插值：B(t) = (1-t)²*P0 + 2*(1-t)*t*P1 + t²*P2
     final oneMinusT = 1.0 - easedT;
     final a = oneMinusT * oneMinusT;
     final b = 2 * oneMinusT * easedT;
@@ -351,7 +451,6 @@ class JingLeiEnemy extends Enemy {
     position.x = a * _dodgeStartPos.x + b * _dodgeControlPoint.x + c * _dodgeEndPos.x;
     position.y = a * _dodgeStartPos.y + b * _dodgeControlPoint.y + c * _dodgeEndPos.y;
 
-    // 边界保护：防止冲出地图
     final g = findGame();
     if (g != null) {
       final gs = g.size;
@@ -360,14 +459,12 @@ class JingLeiEnemy extends Enemy {
       position.y = position.y.clamp(m, gs.y - m);
     }
 
-    // 缩放微弹：0→0.1s(55%进度) 膨胀到 1.15，0.1→0.18s 缩回 1.0
     if (t < 0.55) {
       _scaleBounce = 1.0 + (t / 0.55) * 0.15;
     } else {
       _scaleBounce = 1.15 - ((t - 0.55) / 0.45) * 0.15;
     }
 
-    // 采样残影
     _afterimageSampleAccum += dt;
     if (_afterimageSampleAccum >= _afterimageSampleInterval &&
         _afterimages.length < _maxAfterimages) {
@@ -375,14 +472,12 @@ class JingLeiEnemy extends Enemy {
       _afterimages.add(_Afterimage(position: position.clone()));
     }
 
-    // 发射粒子
     _particleEmitAccum += dt;
     while (_particleEmitAccum >= 1.0 / _particleEmitRate) {
       _particleEmitAccum -= 1.0 / _particleEmitRate;
       _emitDodgeParticle();
     }
 
-    // 冲刺结束 → 进入冷却
     if (_dodgeTimer >= _dodgeDuration) {
       _dodgeState = _DodgeState.cooldown;
       _dodgeTimer = 0;
@@ -391,13 +486,12 @@ class JingLeiEnemy extends Enemy {
   }
 
   void _emitDodgeParticle() {
-    // 后向扇形：冲刺反方向 ±60°
-    final baseAngle = atan2(_dodgeDirection.y, _dodgeDirection.x) + 3.14159; // 反向（π）
-    final spread = (_rng.nextDouble() - 0.5) * (3.14159 / 3); // ±60°
+    final baseAngle = atan2(_dodgeDirection.y, _dodgeDirection.x) + 3.14159;
+    final spread = (_rng.nextDouble() - 0.5) * (3.14159 / 3);
     final angle = baseAngle + spread;
-    final speed = 40.0 + _rng.nextDouble() * 80.0; // 40–120 px/s
-    final life = 0.2 + _rng.nextDouble() * 0.1; // 0.2–0.3s
-    final size = 2.0 + _rng.nextDouble() * 2.0; // 2–4px
+    final speed = 40.0 + _rng.nextDouble() * 80.0;
+    final life = 0.2 + _rng.nextDouble() * 0.1;
+    final size = 2.0 + _rng.nextDouble() * 2.0;
 
     _particles.add(_DodgeParticle(
       pos: position.clone(),
@@ -412,7 +506,6 @@ class JingLeiEnemy extends Enemy {
     final sprite = frames![currentFrame];
 
     for (final a in _afterimages) {
-      // 透明度曲线：0→0.05s 淡入到 0.35，0.05→0.2s 淡出到 0
       double alpha;
       if (a.age < 0.05) {
         alpha = (a.age / 0.05) * 0.35;
@@ -422,20 +515,16 @@ class JingLeiEnemy extends Enemy {
       alpha = alpha.clamp(0.0, 0.35);
       if (alpha <= 0.01) continue;
 
-      // 残影在世界坐标中的位置 → 转换为相对于组件当前位置的偏移
       final localOffset = a.position - position;
 
       canvas.save();
-      // 移动到残影应该显示的位置（相对于组件原点）
       canvas.translate(localOffset.x, localOffset.y);
 
-      // 使用 saveLayer 做淡紫色颜色混合
       canvas.saveLayer(
         Rect.fromLTWH(-size.x / 2, -size.y / 2, size.x, size.y),
         Paint(),
       );
 
-      // 渲染精灵（在 (0,0)，即残影位置的中心，因为 anchor 是 center）
       sprite.render(
         canvas,
         size: size,
@@ -446,8 +535,8 @@ class JingLeiEnemy extends Enemy {
           ),
       );
 
-      canvas.restore(); // restore saveLayer
-      canvas.restore(); // restore translate
+      canvas.restore();
+      canvas.restore();
     }
   }
 
@@ -458,7 +547,6 @@ class JingLeiEnemy extends Enemy {
       final lifeRatio = (p.life / 0.3).clamp(0.0, 1.0);
       if (lifeRatio <= 0.01) continue;
 
-      // 转为相对于组件原点的本地坐标
       final localOffset = p.pos - position;
       final r = p.size / 2;
 
@@ -475,52 +563,6 @@ class JingLeiEnemy extends Enemy {
 
       canvas.drawCircle(Offset(localOffset.x, localOffset.y), r, _particlePaint);
     }
-  }
-
-  /// 是否应该在本帧触发闪电链攻击
-  bool shouldChainAttack() {
-    if (isDead || isFinalForm) return false;
-    if (_chainTimer >= chainInterval) {
-      _chainTimer = 0;
-      return true;
-    }
-    return false;
-  }
-
-  /// 对最近的普通敌人发出闪电链
-  /// 返回 (target, wasKilled) 或 null
-  ({PositionComponent target, bool killed})? tryChainAttack(
-    Iterable<PositionComponent> allEnemies,
-  ) {
-    if (isDead || isFinalForm) return null;
-
-    // 找最近的普通敌人（排除自身和其他惊雷/精英/护士）
-    Enemy? nearest;
-    double nearestDist = double.infinity;
-    for (final e in allEnemies.whereType<Enemy>()) {
-      if (e == this) continue;
-      if (e is JingLeiEnemy || e is NurseEnemy) continue;
-      if (e.isDead) continue;
-      final d = e.position.distanceTo(position);
-      if (d < chainRange && d < nearestDist) {
-        nearestDist = d;
-        nearest = e;
-      }
-    }
-    if (nearest == null) return null;
-
-    // 造成伤害
-    nearest.takeDamage(chainDamage);
-    final wasKilled = nearest.isDead;
-
-    return (target: nearest, killed: wasKilled);
-  }
-
-  /// 记录击杀友军（由游戏调用）
-  void onFriendlyKilled() {
-    if (isFinalForm) return;
-    _friendlyKills++;
-    _speedBonus = _friendlyKills * 0.5;
   }
 
   @override

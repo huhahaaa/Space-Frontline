@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   flame: ^1.26.1
   shared_preferences: ^2.2.0
+  audioplayers: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -20,6 +21,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/music/
     - assets/images/background.jpg
     - assets/images/Space Background_1.png
     - assets/images/Space Background_2.png

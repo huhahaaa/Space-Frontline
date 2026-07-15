@@ -29,7 +29,13 @@ class TalentManager {
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    _availablePoints = _prefs!.getInt('talent_points') ?? 0;
+    // 首次运行默认给 1 天赋点（方便测试）
+    if (_prefs!.getInt('talent_points') == null) {
+      _availablePoints = 1;
+      await _prefs!.setInt('talent_points', 1);
+    } else {
+      _availablePoints = _prefs!.getInt('talent_points')!;
+    }
     final unlockedStr = _prefs!.getString('talent_unlocked') ?? '';
     if (unlockedStr.isNotEmpty) {
       for (final s in unlockedStr.split(',')) {
@@ -52,6 +58,16 @@ class TalentManager {
     if (_availablePoints <= 0 || _unlocked.contains(id)) return false;
     _unlocked.add(id);
     _availablePoints--;
+    _save();
+    return true;
+  }
+
+  // ─── 取消解锁 ───
+
+  bool cancelUnlock(TalentId id) {
+    if (!_unlocked.contains(id)) return false;
+    _unlocked.remove(id);
+    _availablePoints++;
     _save();
     return true;
   }

@@ -5,7 +5,6 @@ class BuffCardOverlay extends StatelessWidget {
   final List<BuffId> choices;
   final Map<BuffId, int> currentLevels;
   final void Function(BuffId id) onSelected;
-  final VoidCallback onSkip;
   final VoidCallback? onReroll;
   final int rerollsRemaining;
 
@@ -14,7 +13,6 @@ class BuffCardOverlay extends StatelessWidget {
     required this.choices,
     required this.currentLevels,
     required this.onSelected,
-    required this.onSkip,
     this.onReroll,
     this.rerollsRemaining = 0,
   });
@@ -58,14 +56,6 @@ class BuffCardOverlay extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 24),
-            TextButton(
-              onPressed: onSkip,
-              child: const Text(
-                '跳过本次 →',
-                style: TextStyle(color: Colors.white38, fontSize: 15),
-              ),
-            ),
           ],
         ),
       ),

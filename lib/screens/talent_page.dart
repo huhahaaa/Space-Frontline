@@ -11,18 +11,27 @@ class TalentPage extends StatefulWidget {
 
 class _TalentPageState extends State<TalentPage> {
   static const _nodes = <_TalentNode>[
+    // ── 第一圈 (dist=1) — 初始天赋 ──
     _TalentNode(0, -1, TalentId.reinforcedArmor, '加固装甲', '🛡️', '初始血量 +20'),
     _TalentNode(1, -1, TalentId.expandedChoices, '选择扩充', '📋', '升级时 buff 选择 3→4 张'),
     _TalentNode(1, 0, TalentId.expDrain, '经验汲取', '📊', '每波额外 +10 经验'),
     _TalentNode(0, 1, TalentId.freeReroll, '重抽机会', '🔄', '每局可免费重抽 buff 1 次'),
     _TalentNode(-1, 0, null, '', '🔒', '暂未开放'),
     _TalentNode(-1, 1, null, '', '🔒', '暂未开放'),
+    // ── 第二圈 (dist=2) ──
     _TalentNode(0, -2, null, '', '🔒', '暂未开放'),
     _TalentNode(2, -1, null, '', '🔒', '暂未开放'),
     _TalentNode(2, 0, null, '', '🔒', '暂未开放'),
     _TalentNode(0, 2, null, '', '🔒', '暂未开放'),
     _TalentNode(-2, 1, null, '', '🔒', '暂未开放'),
     _TalentNode(-2, 0, null, '', '🔒', '暂未开放'),
+    // ── 第三圈 (dist=3) — 远景占位 ──
+    _TalentNode(0, -3, null, '', '🔒', '暂未开放'),
+    _TalentNode(3, -1, null, '', '🔒', '暂未开放'),
+    _TalentNode(2, 1, null, '', '🔒', '暂未开放'),
+    _TalentNode(0, 3, null, '', '🔒', '暂未开放'),
+    _TalentNode(-3, 1, null, '', '🔒', '暂未开放'),
+    _TalentNode(-2, -1, null, '', '🔒', '暂未开放'),
   ];
 
   Offset _hexToPixel(int q, int r, double size) {
@@ -47,16 +56,14 @@ class _TalentPageState extends State<TalentPage> {
 
   // ── 根据屏宽计算六边形半径 ──
   static double _calcHexSize(double screenWidth, double gridHeight) {
-    // 网格宽度：q ∈ [-2, 2]，跨度 4 步，每步 1.5*size，再加上一个六边形的"外溢"
-    // → 总占宽 ≈ 4 * 1.5 * size + (sqrt(3) ≈ 1.732) * size ≈ 7.732 * size
-    // 留 8% 边距 → size = screenWidth * 0.92 / 7.732
-    final byWidth = screenWidth * 0.92 / 7.732;
-    // 网格高度：r ∈ [-2, 2]，跨度 4 步，每步 sqrt(3)*size，加外溢
-    // → 总占高 ≈ 5 * sqrt(3) * size ≈ 8.66 * size
-    // 顶部栏+徽章约占 100px，留 6% 边距
+    // q ∈ [-3, 3]，跨度 6 步 → 总占宽 ≈ 6 * 1.5 * size + 1.732 * size ≈ 10.732 * size
+    final byWidth = screenWidth * 0.92 / 10.732;
+    // r ∈ [-3, 3]，跨度 6 步 → 总占高 ≈ 7 * sqrt(3) * size ≈ 12.124 * size
     final availH = gridHeight * 0.88;
-    final byHeight = availH / 8.66;
-    return min(byWidth, byHeight).clamp(36.0, 62.0);
+    final byHeight = availH / 12.124;
+    // 下限 22 → 六边形宽 ≈ 38dp，配合触摸扩展区可用
+    // 上限 32 → 大屏保持星点感
+    return min(byWidth, byHeight).clamp(22.0, 32.0);
   }
 
   @override
@@ -200,7 +207,7 @@ class _TalentPageState extends State<TalentPage> {
     final canUnlock = node.talentId != null && !isUnlocked && _canUnlock(node, unlocked);
 
     if (isUnlocked) {
-      _showInfo(context, node, sp);
+      _showCancelConfirm(context, node, tm, sp);
     } else if (canUnlock && tm.availablePoints > 0) {
       _showUnlockConfirm(context, node, tm, sp);
     } else if (node.talentId == null) {
@@ -212,25 +219,48 @@ class _TalentPageState extends State<TalentPage> {
     }
   }
 
-  void _showInfo(BuildContext context, _TalentNode node, _ScaledText sp) {
+  void _showCancelConfirm(BuildContext context, _TalentNode node, TalentManager tm, _ScaledText sp) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xF0111D2A),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0x44FFFFFF))),
+            side: const BorderSide(color: Color(0xAAFF4444))),
         title: Row(children: [
           Text(node.icon, style: TextStyle(fontSize: sp.dialogIcon)),
           const SizedBox(width: 10),
           Text(node.name, style: TextStyle(color: Colors.white, fontSize: sp.dialogTitle)),
         ]),
-        content: Text(node.description,
-            style: TextStyle(color: Colors.white.withAlpha(200), fontSize: sp.dialogBody)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('已解锁 — ${node.description}',
+              style: TextStyle(color: Colors.white.withAlpha(200), fontSize: sp.dialogBody)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Text('⭐', style: TextStyle(fontSize: sp.dialogBody)),
+            const SizedBox(width: 4),
+            Text('退还 1 天赋点',
+                style: TextStyle(color: const Color(0xFFFFD700).withAlpha(230),
+                    fontSize: sp.dialogBody, fontWeight: FontWeight.w600)),
+          ]),
+        ]),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('确定', style: TextStyle(color: Colors.cyanAccent, fontSize: sp.dialogBtn)),
+            child: Text('保留', style: TextStyle(color: Colors.white54, fontSize: sp.dialogBtn)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final ok = tm.cancelUnlock(node.talentId!);
+              Navigator.pop(ctx);
+              if (ok) { setState(() {}); _toast(context, '已取消 ${node.name}', const Color(0xFFFF8844), sp); }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: Text('取消解锁', style: TextStyle(fontSize: sp.dialogBtn, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -358,20 +388,22 @@ class _HexTile extends StatelessWidget {
 
     final Color fill; final Color border; final Color? glow;
     if (isUnlocked) {
-      fill = const Color(0xFF1B4A35); border = const Color(0xFF55DD88); glow = const Color(0x5555DD88);
+      // 已解锁 — 亮星：温金色填充，亮金边框，金色光晕
+      fill = const Color(0xFF3D2200); border = const Color(0xFFFFD700); glow = const Color(0x55FFD700);
     } else if (canUnlock && hasPoints) {
-      fill = const Color(0xFF3A2E0E); border = const Color(0xFFFFD700); glow = const Color(0x55FFD700);
+      // 可解锁有积分 — 近星：青蓝微光
+      fill = const Color(0x44081F2E); border = const Color(0x8844AAEE); glow = const Color(0x2844AAEE);
     } else if (canUnlock && !hasPoints) {
-      fill = const Color(0xFF2A1E0E); border = const Color(0xBBFFD700); glow = const Color(0x22FFD700);
-    } else if (isPlaceholder) {
-      fill = const Color(0x44121824); border = const Color(0x44FFFFFF); glow = null;
+      fill = const Color(0x2208141C); border = const Color(0x4444AAEE); glow = const Color(0x1044AAEE);
     } else {
-      fill = const Color(0xFF141E28); border = const Color(0x55FFFFFF); glow = null;
+      // 锁定 / 占位 — 暗星：极淡白点
+      fill = const Color(0x33060C14); border = const Color(0x18FFFFFF); glow = null;
     }
 
-    final tileW = size * 1.82;
-    final tileH = size * 1.58;
-    final bw = (size * 0.036).clamp(1.5, 2.5);
+    // 触摸区保证最小可用尺寸
+    final tileW = (size * 1.82).clamp(40.0, 100.0);
+    final tileH = (size * 1.58).clamp(36.0, 88.0);
+    final bw = (size * 0.022).clamp(0.8, 1.5);
 
     return GestureDetector(
       onTap: onTap,
@@ -386,15 +418,23 @@ class _HexTile extends StatelessWidget {
             padding: EdgeInsets.only(top: size * 0.1),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Text(node.icon, style: TextStyle(fontSize: sp.tileIcon,
-                  shadows: isUnlocked ? [Shadow(color: const Color(0x8855FF88), blurRadius: size * 0.15)]
-                      : (canUnlock && hasPoints) ? [Shadow(color: const Color(0x88FFD700), blurRadius: size * 0.15)] : null)),
+                  shadows: isUnlocked
+                      ? [Shadow(color: const Color(0x88FFD700), blurRadius: size * 0.18)]
+                      : (canUnlock && hasPoints)
+                          ? [Shadow(color: const Color(0x6644AAEE), blurRadius: size * 0.12)]
+                          : null)),
               if (isUnlocked || canUnlock || isPlaceholder)
                 Padding(
-                  padding: EdgeInsets.only(top: size * 0.04),
-                  child: Text(isPlaceholder ? '???' : node.name,
+                  padding: EdgeInsets.only(top: size * 0.03),
+                  child: Text(
+                      isUnlocked ? node.name : '???',
                       style: TextStyle(
-                          color: isUnlocked ? Colors.white : canUnlock ? const Color(0xFFFFD700) : Colors.white60,
-                          fontSize: sp.tileName, fontWeight: FontWeight.w700, letterSpacing: 0.5))),
+                          color: isUnlocked
+                              ? const Color(0xFFFFD700)
+                              : canUnlock
+                                  ? const Color(0xFF88CCFF)
+                                  : Colors.white24,
+                          fontSize: sp.tileName, fontWeight: FontWeight.w500, letterSpacing: 0.3))),
             ]),
           ),
         ]),
@@ -500,51 +540,69 @@ class _ConstellationPainter extends CustomPainter {
     final cx = size.width / 2;
     final cy = size.height / 2;
 
-    // 装饰环 — 半径不超过可视区域
+    // 装饰环 — 对应三圈节点
     final ringPaint = Paint()
-      ..color = const Color(0x30FFFFFF)..style = PaintingStyle.stroke..strokeWidth = 1.0;
-    final r1 = min(hexSize * 3.4, min(cx, cy) * 0.95);
-    final r2 = min(hexSize * 5.3, min(cx, cy) * 0.95);
+      ..color = const Color(0x10FFFFFF)..style = PaintingStyle.stroke..strokeWidth = 0.6;
+    final r1 = min(hexSize * 1.9, min(cx, cy) * 0.95);
+    final r2 = min(hexSize * 3.6, min(cx, cy) * 0.95);
+    final r3 = min(hexSize * 5.3, min(cx, cy) * 0.95);
     if (r1 > 0) canvas.drawCircle(Offset(cx, cy), r1, ringPaint);
     if (r2 > r1 + 10) canvas.drawCircle(Offset(cx, cy), r2, ringPaint);
+    if (r3 > r2 + 10) canvas.drawCircle(Offset(cx, cy), r3, ringPaint);
 
-    final linePaint = Paint()..strokeWidth = (hexSize * 0.028).clamp(1.0, 1.8)..style = PaintingStyle.stroke;
-    final glowPaint = Paint()
-      ..strokeWidth = (hexSize * 0.072).clamp(3.0, 5.0)
+    // 连线画笔
+    final dimLine = Paint()
+      ..strokeWidth = (hexSize * 0.012).clamp(0.4, 0.7)
       ..style = PaintingStyle.stroke
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, hexSize * 0.09);
+      ..strokeCap = StrokeCap.round;
+    final brightLine = Paint()
+      ..strokeWidth = (hexSize * 0.022).clamp(0.8, 1.4)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
 
+    // 收集已解锁节点坐标（用于快速查找）
+    final unlockedPositions = <_TalentNode, Offset>{};
+    for (final node in nodes) {
+      if (node.talentId != null && unlocked.contains(node.talentId)) {
+        unlockedPositions[node] = _hexToPixel(node.q, node.r, cx, cy);
+      }
+    }
+
+    // ── 第一遍：画所有相邻连线（暗色常驻）──
+    dimLine.color = const Color(0x12FFFFFF);
     for (final node in nodes) {
       final nodePos = _hexToPixel(node.q, node.r, cx, cy);
 
+      // 中心连线
       if (_isAdjacent(node.q, node.r, 0, 0)) {
-        final connected = node.talentId != null && unlocked.contains(node.talentId);
-        if (connected) {
-          glowPaint.color = const Color(0x55FFD700);
-          canvas.drawLine(Offset(cx, cy), nodePos, glowPaint);
-          linePaint.color = const Color(0xBBFFD700);
-        } else {
-          linePaint.color = const Color(0x35FFFFFF);
-        }
-        canvas.drawLine(Offset(cx, cy), nodePos, linePaint);
+        canvas.drawLine(Offset(cx, cy), nodePos, dimLine);
       }
 
+      // 节点间连线（每对只画一次）
       for (final other in nodes) {
         if (other == node) continue;
         if (!_isAdjacent(node.q, node.r, other.q, other.r)) continue;
         if (node.q + node.r > other.q + other.r) continue;
+        canvas.drawLine(nodePos, _hexToPixel(other.q, other.r, cx, cy), dimLine);
+      }
+    }
 
-        final otherPos = _hexToPixel(other.q, other.r, cx, cy);
-        final both = node.talentId != null && unlocked.contains(node.talentId) &&
-                     other.talentId != null && unlocked.contains(other.talentId);
-        if (both) {
-          glowPaint.color = const Color(0x55FFD700);
-          canvas.drawLine(nodePos, otherPos, glowPaint);
-          linePaint.color = const Color(0xAAFFD700);
-        } else {
-          linePaint.color = const Color(0x35FFFFFF);
+    // ── 第二遍：点亮两端均已解锁的连线 ──
+    brightLine.color = const Color(0xCCFFD700);
+    // 中心到已解锁节点
+    for (final entry in unlockedPositions.entries) {
+      if (_isAdjacent(entry.key.q, entry.key.r, 0, 0)) {
+        canvas.drawLine(Offset(cx, cy), entry.value, brightLine);
+      }
+    }
+    // 已解锁节点之间
+    final unlockedList = unlockedPositions.entries.toList();
+    for (int i = 0; i < unlockedList.length; i++) {
+      for (int j = i + 1; j < unlockedList.length; j++) {
+        if (_isAdjacent(unlockedList[i].key.q, unlockedList[i].key.r,
+                         unlockedList[j].key.q, unlockedList[j].key.r)) {
+          canvas.drawLine(unlockedList[i].value, unlockedList[j].value, brightLine);
         }
-        canvas.drawLine(nodePos, otherPos, linePaint);
       }
     }
   }

@@ -102,11 +102,11 @@ class _MonsterpediaScreenState extends State<MonsterpediaScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
                     _EnemyCard(
-                      name: '普通敌人',
-                      subtitle: '基础入侵单位 · 每波大量生成',
-                      hp: '3.0 × 波次倍率',
-                      speed: '50 px/s × 波次倍率',
-                      skill: '无特殊技能',
+                      name: '水银',
+                      subtitle: '基础单位 · 大量生成',
+                      hp: '3.0 × 倍率',
+                      speed: '50 px/s × 倍率',
+                      skill: '无',
                       description: '',
                       child: _enemySprite != null
                           ? SpriteWidget(
@@ -118,10 +118,10 @@ class _MonsterpediaScreenState extends State<MonsterpediaScreen> {
                     const SizedBox(height: 12),
                     _EnemyCard(
                       name: '沃土',
-                      subtitle: '第 2 波起 · 每 4 个普通敌人混 1 个 · 到达中场后停驻',
-                      hp: '6.0 × 波次倍率',
-                      speed: '40 px/s × 波次倍率 (0.8× 基速)',
-                      skill: '停驻后每 2.5 秒释放震荡波，消除普通子弹',
+                      subtitle: '第 2 波起 · 中场停驻 · 持续产兵',
+                      hp: '6.0 × 倍率',
+                      speed: '40 px/s × 倍率',
+                      skill: '每 2.5s 释放震荡波消除子弹\n定期在自身位置生成普通敌人',
                       description: '',
                       child: _eliteAnim != null
                           ? _AnimatedPreview(animation: _eliteAnim!)
@@ -130,10 +130,10 @@ class _MonsterpediaScreenState extends State<MonsterpediaScreen> {
                     const SizedBox(height: 12),
                     _EnemyCard(
                       name: '护士',
-                      subtitle: '第 5 波起 · 每 3 个普通敌人混 1 个 · 辅助治疗单位',
-                      hp: '4.5 × 波次倍率 (1.5× 普通敌人)',
-                      speed: '25 px/s × 波次倍率 (0.5× 基速)',
-                      skill: '每 2.5s 对 100px 内友军净化（清除燃烧/感电/减速）\n并恢复 80% 已损失生命值 · 赋予 1s 火焰风暴免疫',
+                      subtitle: '第 4 波起 · 辅助治疗',
+                      hp: '4.5 × 倍率',
+                      speed: '25 px/s × 倍率',
+                      skill: '每 2.5s 净化 100px 内友军\n恢复 80% 已损失 HP',
                       description: '',
                       child: _nurseSprites != null
                           ? _SpriteListPreview(sprites: _nurseSprites!)
@@ -142,13 +142,14 @@ class _MonsterpediaScreenState extends State<MonsterpediaScreen> {
                     const SizedBox(height: 12),
                     _EnemyCard(
                       name: '惊雷',
-                      subtitle: '第 1 波起 · 每 6 个普通敌人混 1 个 · 高速闪避型精英',
-                      hp: '4.5 × 波次倍率 (1.5× 普通敌人)',
-                      speed: '初始 25 px/s × 波次倍率 (0.5× 基速)\n每击杀友军 +0.5× 基速（上限 +1.5×）',
-                      skill: '弧线冲刺闪避子弹（0.75s CD，冲刺中无敌）\n'
-                          '闪电链攻击 300px 内友军（5 伤害/秒）\n'
-                          '击杀 3 友军 → 最终形态：50% 减伤、免疫减速\n'
-                          '只向前闪避（3s CD）、触及炮塔伤害 10',
+                      subtitle: '第 6 波起 · 汲取型精英',
+                      hp: '4.5 × 倍率',
+                      speed: '汲取中 0.5× 基速\n汲取后 0.5~2.0×（按汲取数）',
+                      skill: '出场与 3 个电池敌人闪电链相连（三角阵）\n'
+                          '每 1.0s 汲取 1 个电池 → 自身获得增益\n'
+                          '汲取完成：移速/减伤/闪避 CD 按汲取数梯度\n'
+                          '汲取阶段无闪避 · 玩家可击杀电池削弱\n'
+                          '弧线冲刺闪避子弹（冲刺中无敌）',
                       description: '',
                       child: _jingLeiAnim != null
                           ? _AnimatedPreview(animation: _jingLeiAnim!)

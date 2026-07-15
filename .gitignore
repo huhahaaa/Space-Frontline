@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Office temp files
+~$*
+*.tmp
+
+# Generated docx (rebuild with docs/md2docx.py)
+docs/*.docx

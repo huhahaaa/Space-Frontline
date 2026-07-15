@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flame/components.dart';
 import 'package:flame/flame.dart';
+import 'elite_trait.dart';
 import '../buffs/status_effects/frozen.dart';
 import '../buffs/status_effects/feared.dart';
 import '../buffs/status_effects/slowed.dart';
@@ -8,7 +9,7 @@ import '../buffs/status_effects/marked.dart';
 import '../buffs/status_effects/burning.dart';
 
 /// 精英敌人
-class EliteEnemy extends PositionComponent {
+class EliteEnemy extends PositionComponent with EliteTrait {
   final double hpMultiplier;
   final double speedMultiplier;
 

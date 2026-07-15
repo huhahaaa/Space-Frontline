@@ -14,14 +14,21 @@ import 'components/lightning_strike.dart';
 import 'components/elite_enemy.dart';
 import 'components/nurse_enemy.dart';
 import 'components/jing_lei_enemy.dart';
+import 'components/elite_trait.dart';
+import 'components/drain_link.dart';
+import 'components/drain_arrow.dart';
 import 'components/drone.dart';
 import 'components/drone_bullet.dart';
 import 'components/fire_storm.dart';
 import 'components/emp_wave.dart';
+import 'components/item_effect_ring.dart';
+import 'components/item_fly_to_bar.dart';
+import 'components/crosshair.dart';
 import 'buffs/buff_registry.dart';
 import 'buffs/buff_manager.dart';
 import 'talent_manager.dart';
-import 'buffs/buff_card_data.dart';
+import 'items/item_data.dart';
+import 'audio_manager.dart';
 import 'buffs/status_effects/burning.dart';
 import 'buffs/status_effects/slowed.dart';
 import 'buffs/status_effects/shocked.dart';
@@ -72,8 +79,12 @@ VoidCallback? onGameWon;
       paused: _paused,
       buffState: _buffState,
       buffChoices: _buffChoices,
-      buffStash: _buffStash.map((s) => s.choices).toList(),
+      items: List.from(_items),
       activeBuffs: Map.from(_buffManager?.allLevels ?? {}),
+      lastAcquiredItem: _lastAcquiredItem,
+      aimingItem: _aimingItem,
+      pendingItem: _pendingItem,
+      nextWaveReward: _wave == 4 || _wave == 9 || _wave == 14,
     );
   }
 
@@ -86,8 +97,8 @@ VoidCallback? onGameWon;
   BuffManager? get buffManager => _buffManager;
   int _buffState = 0; // 0=idle, 1=selecting
   List<BuffId>? _buffChoices;
-  final List<BuffCardSet> _buffStash = [];
-  static const int maxStashSize = 3;
+  final List<ItemId> _items = [];
+  static const int maxItemSlots = 3;
   double _staticFieldTimer = 999; // 选取后立即触发一次
   bool _voidRiftSpawnedThisWave = false;
   double _dotNumberTimer = 0;
@@ -96,12 +107,18 @@ VoidCallback? onGameWon;
 
   @override
   void onPointerMove(PointerMoveEvent event) {
-    // 不再手动控制无人机
+    if (_aimingItem != null && _crosshair != null) {
+      _crosshair!.follow(event.canvasPosition);
+    }
   }
 
   @override
   void onTapDown(TapDownEvent event) {
-    // 不再手动控制无人机
+    if (_aimingItem == ItemId.orbitalStrike) {
+      _fireOrbitalStrike(event.canvasPosition);
+      _exitAimingMode();
+      return;
+    }
   }
 
   // ─── 敌人生成 ───
@@ -144,8 +161,8 @@ VoidCallback? onGameWon;
   double _spawnRateBonus = 1.0;
   double get currentSpawnInterval {
     final base = enemySpawnInterval / _spawnRateBonus;
-    // 最后一波生成频率翻倍（间隔减半）
-    if (_wave == maxWave && !_waveClearing) return base * 0.5;
+    // 最后一波生成频率 1.5 倍
+    if (_wave == maxWave && !_waveClearing) return base / 1.5;
     return base;
   }
 
@@ -353,7 +370,9 @@ VoidCallback? onGameWon;
     if (bm.bloodRageActive) finalDamage *= (1.0 + bm.bloodRageDamageBonus);
 
     // 精英额外伤害
-    if (target is EliteEnemy) finalDamage *= (1.0 + bm.powerShotEliteBonus);
+    if (target is EliteTrait) {
+      finalDamage *= (1.0 + bm.powerShotEliteBonus);
+    }
 
     // 发射主子弹
     _launchBullet(finalDamage, target);
@@ -439,16 +458,48 @@ VoidCallback? onGameWon;
 
   void _spawnJingLei() {
     final rng = Random();
+
+    // 惊雷在三角形中心
     final jl = JingLeiEnemy(
       speedMultiplier: _enemySpeedBonus,
       hpMultiplier: _enemyHpBonus,
     );
-    final marginX = size.x * 0.12;
-    jl.position = Vector2(
-      marginX + rng.nextDouble() * (size.x - marginX * 2),
-      -30.0,
-    );
+    // 三角形半径 90px → 最上方顶点在 centerY - 90
+    // 确保顶点也在屏幕可见区内（至少 10px 边距）
+    // → centerY ≥ 100，取 centerY = 110 留一定余量
+    final marginX = size.x * 0.18;
+    final centerX = marginX + rng.nextDouble() * (size.x - marginX * 2);
+    final centerY = 110.0;
+    jl.position = Vector2(centerX, centerY);
     add(jl);
+
+    // 汲取箭头动画回调
+    jl.onDrain = (pos) => add(DrainArrow(at: pos));
+
+    // 电池死亡爆炸回调
+    jl.onBatteryDrained = (pos) => add(DeathExplosion(at: pos));
+
+    // 3 个电池敌人围成三角形（半径 90px）
+    const linkRadius = 90.0;
+    for (int i = 0; i < 3; i++) {
+      // 三角形顶点：从上方开始（-90°），顺时针 120° 间隔
+      final angle = -1.5708 + (i * 2.0944); // -π/2 + i * 2π/3
+      final bx = centerX + cos(angle) * linkRadius;
+      final by = centerY + sin(angle) * linkRadius;
+
+      final battery = Enemy(
+        hpMultiplier: _enemyHpBonus * 1.25,
+        speedMultiplier: _enemySpeedBonus * 0.5, // 与惊雷汲取阶段同步 0.5x
+      );
+      battery.isBattery = true;
+      battery.position = Vector2(bx, by);
+      add(battery);
+
+      jl.registerLinkedEnemy(battery);
+
+      // 持续闪电链
+      add(DrainLink(fromRef: jl, toRef: battery));
+    }
   }
 
   void _spawnEliteEnemy() {
@@ -498,7 +549,7 @@ VoidCallback? onGameWon;
           if (enemy is EliteEnemy) enemy.takeDamage(dmg);
 
           add(HitFlash(at: enemy.position.clone()));
-          add(DamageNumber(amount: dmg, at: enemy.position.clone(), color: Colors.white));
+          add(DamageNumber(amount: _actualDmg(enemy, dmg), at: enemy.position.clone(), color: Colors.white));
 
           // 分裂弹（仅原弹触发，分裂弹不再分裂）
           if (!bullet.isSplit) {
@@ -525,7 +576,7 @@ VoidCallback? onGameWon;
           _tryApplyShadowMark(enemy);
 
           add(HitFlash(at: enemy.position.clone()));
-          add(DamageNumber(amount: DroneBullet.damage, at: enemy.position.clone(), color: Colors.white));
+          add(DamageNumber(amount: _actualDmg(enemy, DroneBullet.damage), at: enemy.position.clone(), color: Colors.white));
           if (_enemyIsDead(enemy)) _onEnemyKilled(enemy);
         }
       }
@@ -560,7 +611,7 @@ VoidCallback? onGameWon;
       if (nearest is Enemy) nearest.takeDamage(chainDmg);
       if (nearest is EliteEnemy) nearest.takeDamage(chainDmg);
       add(HitFlash(at: nearest.position.clone()));
-      add(DamageNumber(amount: chainDmg, at: nearest.position.clone(), color: const Color(0xFFFFD740), icon: '⚡'));
+      add(DamageNumber(amount: _actualDmg(nearest, chainDmg), at: nearest.position.clone(), color: const Color(0xFFFFD740), icon: '⚡'));
 
       _tryApplyBurning(nearest);
       _tryApplyFrostSlow(nearest);
@@ -659,8 +710,6 @@ VoidCallback? onGameWon;
   }
 
   void _tryApplyFrostSlow(PositionComponent enemy) {
-    // 惊雷最终形态免疫减速
-    if (enemy is JingLeiEnemy && enemy.immuneToCrowdControl) return;
     final bm = _buffManager!;
     if (bm.frostSlowFactor <= 0) return;
 
@@ -706,6 +755,16 @@ VoidCallback? onGameWon;
 
   // ─── 击杀事件 ───
   void _onEnemyKilled(PositionComponent enemy) {
+    // 电池敌人：只做死亡爆炸和移除，不计入击杀数/经验，不触发掉落
+    if (enemy is Enemy && enemy.isBattery) {
+      add(DeathExplosion(at: enemy.position.clone()));
+      // 通知所有惊雷：电池被玩家击杀
+      for (final jl in children.whereType<JingLeiEnemy>()) {
+        jl.onLinkedEnemyKilledByPlayer(enemy);
+      }
+      enemy.removeFromParent();
+      return;
+    }
     final bm = _buffManager!;
 
     add(DeathExplosion(at: enemy.position.clone()));
@@ -721,7 +780,7 @@ VoidCallback? onGameWon;
             final explosionDmg = burn.dps * 3; // 基于灼烧层数的爆炸伤害
             if (e is Enemy) e.takeDamage(explosionDmg);
             if (e is EliteEnemy) e.takeDamage(explosionDmg);
-            add(DamageNumber(amount: explosionDmg, at: e.position.clone(), color: const Color(0xFFFF6D3F), icon: '💥'));
+            add(DamageNumber(amount: _actualDmg(e, explosionDmg), at: e.position.clone(), color: const Color(0xFFFF6D3F), icon: '💥'));
             if (_enemyIsDead(e)) _onEnemyKilled(e);
           }
         }
@@ -733,8 +792,8 @@ VoidCallback? onGameWon;
       _spreadBurningToNearby(enemy, BurnSource.emberEcho, 0.5, bm.burnDuration, bm.emberEchoRadius);
     }
 
-    // 冰霜新星（仅精英死亡触发）
-    if (enemy is EliteEnemy && bm.frostNovaLevel > 0) {
+    // 冰霜新星（精英死亡触发）
+    if (enemy is EliteTrait && bm.frostNovaLevel > 0) {
       _triggerFrostNova(enemy, bm.frostNovaRadius, bm.frostNovaFreezeDuration);
     }
 
@@ -767,7 +826,12 @@ VoidCallback? onGameWon;
 
     int expGain = 10;
     if (enemy is Enemy) expGain = enemy.expValue;
-    if (enemy is EliteEnemy) expGain = enemy.expValue;
+    if (enemy is EliteEnemy) {
+      expGain = enemy.expValue;
+    }
+    if (enemy is EliteTrait) {
+      _tryDropItem(enemy.position.clone());
+    }
     _exp += expGain;
     _notifyHud();
 
@@ -975,49 +1039,6 @@ VoidCallback? onGameWon;
     }
   }
 
-  // ─── 惊雷闪电链攻击 ───
-  void _updateJingLeiAttacks() {
-    final jingLeis = children.whereType<JingLeiEnemy>().toList();
-    if (jingLeis.isEmpty) return;
-
-    final allEnemies = <PositionComponent>[];
-    for (final c in children) {
-      if ((c is Enemy || c is EliteEnemy) && !c.isRemoving) {
-        allEnemies.add(c as PositionComponent);
-      }
-    }
-
-    for (final jl in jingLeis) {
-      if (!jl.shouldChainAttack()) continue;
-
-      final result = jl.tryChainAttack(allEnemies);
-      if (result == null) continue;
-
-      final target = result.target;
-      final wasKilled = result.killed;
-
-      // 闪电链视觉（由游戏侧添加，避免 findGame 竞态）
-      add(LightningChain(
-        from: jl.position.clone(),
-        to: target.position.clone(),
-      ));
-
-      // 伤害数字
-      add(HitFlash(at: target.position.clone()));
-      add(DamageNumber(
-        amount: JingLeiEnemy.chainDamage,
-        at: target.position.clone(),
-        color: const Color(0xFFFFD740),
-        icon: '⚡',
-      ));
-
-      if (wasKilled) {
-        jl.onFriendlyKilled();
-        _onEnemyKilled(target);
-      }
-    }
-  }
-
   // ─── 静电场 ───
   void _updateStaticField(double dt) {
     final bm = _buffManager!;
@@ -1047,7 +1068,7 @@ VoidCallback? onGameWon;
                 if (e is Enemy) e.takeDamage(bm.staticFieldDamage);
                 if (e is EliteEnemy) e.takeDamage(bm.staticFieldDamage);
                 add(HitFlash(at: e.position.clone()));
-                add(DamageNumber(amount: bm.staticFieldDamage, at: e.position.clone(), color: const Color(0xFFFFD740), icon: '⚡'));
+                add(DamageNumber(amount: _actualDmg(e, bm.staticFieldDamage), at: e.position.clone(), color: const Color(0xFFFFD740), icon: '⚡'));
                 if (_enemyIsDead(e)) _onEnemyKilled(e);
               }
             }
@@ -1117,8 +1138,7 @@ VoidCallback? onGameWon;
       for (final e in enemies) {
         if (_enemyIsDead(e)) continue;
         final purged = e.firstChild<PurgeProtected>();
-        final jlImmune = e is JingLeiEnemy && e.immuneToCrowdControl;
-        final ccImmune = (purged != null && purged.isActive) || jlImmune;
+        final ccImmune = purged != null && purged.isActive;
         final dist = e.position.distanceTo(storm.position);
         if (dist < storm.radius && dist > 1) {
           if (!ccImmune) {
@@ -1159,7 +1179,7 @@ VoidCallback? onGameWon;
       return;
     }
     add(DeathExplosion(at: explosionPos));
-    final dmg = (enemy is JingLeiEnemy && enemy.isFinalForm) ? 10 : 5;
+    final dmg = (enemy is JingLeiEnemy && enemy.isDrainPhaseComplete) ? 10 : 5;
     _hp -= dmg;
 
     _notifyHud();
@@ -1168,6 +1188,7 @@ VoidCallback? onGameWon;
       _hp = 0;
   
       _gameOver = true;
+      AudioManager.instance.playBgm('music/lose....mp3', loop: false);
       _notifyHud();
     }
   }
@@ -1214,19 +1235,6 @@ VoidCallback? onGameWon;
     onBuffSelectionChanged?.call();
   }
 
-  void skipBuff() {
-    if (_buffChoices == null) return;
-    _buffStash.add(BuffCardSet(List.from(_buffChoices!)));
-    if (_buffStash.length > maxStashSize) {
-      _buffStash.removeAt(0);
-    }
-    _buffState = 0;
-    _buffChoices = null;
-    _paused = false;
-    _notifyHud();
-    onBuffSelectionChanged?.call();
-  }
-
   void rerollBuffChoices() {
     final tm = TalentManager.instance;
     if (!tm.useReroll()) return;
@@ -1235,15 +1243,170 @@ VoidCallback? onGameWon;
     onBuffSelectionChanged?.call();
   }
 
-  void selectFromStash(int index) {
-    if (index < 0 || index >= _buffStash.length) return;
-    final cardSet = _buffStash.removeAt(index);
-    _paused = true;
-    _buffState = 1;
-    _buffChoices = cardSet.choices;
+  // ─── 道具系统 ───
+
+  /// 添加道具到背包（满槽时触发替换弹窗，否则直接加入）
+  void addItem(ItemId id) {
+    _lastAcquiredItem = id;
+
+    if (_items.length >= maxItemSlots && _pendingItem == null) {
+      // 背包已满，暂停游戏等待玩家选择替换
+      _pendingItem = id;
+      _notifyHud();
+      return;
+    }
+
+    _items.add(id);
+    while (_items.length > maxItemSlots) {
+      _items.removeAt(0);
+    }
     _notifyHud();
-    onBuffSelectionChanged?.call();
   }
+
+  /// 玩家确认替换道具（slotIndex 为要替换的槽位，null 表示丢弃新道具）
+  void confirmItemReplace(int? slotIndex) {
+    if (_pendingItem == null) return;
+    final newId = _pendingItem!;
+    _pendingItem = null;
+
+    if (slotIndex != null && slotIndex >= 0 && slotIndex < _items.length) {
+      _items[slotIndex] = newId;
+    }
+    // slotIndex 为 null → 丢弃新道具，保持原样
+
+    _notifyHud();
+  }
+
+  /// 使用指定槽位的道具
+  void useItem(int index) {
+    if (_aimingItem != null || index < 0 || index >= _items.length) return;
+    final id = _items.removeAt(index);
+    _activateItem(id);
+    _notifyHud();
+  }
+
+  /// 激活道具效果
+  void _activateItem(ItemId id) {
+    switch (id) {
+      case ItemId.nanoRepair:
+        _hp = (_hp + (maxHp * 0.3).round()).clamp(0, maxHp);
+        add(DamageNumber.heal(amount: (maxHp * 0.3).round().toDouble(), at: _tower!.position.clone()));
+        add(ItemEffectRing(position: _tower!.position.clone(), color: const Color(0xFF4CAF50), maxRadius: 100, duration: 0.7));
+        break;
+
+      case ItemId.cryoBomb:
+        for (final e in enemies) {
+          if (_enemyIsDead(e)) continue;
+          final comp = e as Component;
+          var frozen = comp.firstChild<Frozen>();
+          if (frozen != null) {
+            frozen.refresh(3.0);
+          } else {
+            comp.add(Frozen(duration: 3.0));
+          }
+        }
+        add(ItemEffectRing(position: Vector2(size.x / 2, size.y / 2), color: const Color(0xFF64B5F6), maxRadius: size.x * 0.7, duration: 0.5));
+        break;
+
+      case ItemId.overchargeCore:
+        _overchargeTimer = 6.0;
+        _overchargeActive = true;
+        add(ItemEffectRing(position: _tower!.position.clone(), color: const Color(0xFFFFD740), maxRadius: 80, duration: 0.5));
+        break;
+
+      case ItemId.orbitalStrike:
+        // 进入瞄准模式 — 玩家点击屏幕选择打击位置
+        _enterAimingMode(ItemId.orbitalStrike);
+        break;
+
+      case ItemId.timeWarp:
+        for (final e in enemies) {
+          if (_enemyIsDead(e)) continue;
+          final comp = e as Component;
+          var slowed = comp.firstChild<Slowed>();
+          if (slowed != null) {
+            slowed.refresh(4.0);
+          } else {
+            comp.add(Slowed(factor: 0.70, duration: 4.0));
+          }
+        }
+        add(ItemEffectRing(position: Vector2(size.x / 2, size.y / 2), color: const Color(0xFFAB47BC), maxRadius: size.x * 0.7, duration: 0.6));
+        break;
+    }
+  }
+
+  /// 尝试从精英敌人掉落道具
+  void _tryDropItem(Vector2 at) {
+    if (Random().nextDouble() < 0.12) {
+      final itemId = ItemRegistry.randomId();
+      addItem(itemId);
+      final meta = ItemRegistry.data[itemId]!;
+      // 飞入道具栏动画（Flame 组件，不碰 Flutter widget）
+      add(ItemFlyToBar(from: at, color: meta.color, icon: meta.icon));
+      // 掉落光效
+      add(ItemEffectRing(position: at, color: const Color(0xFFFFD700), maxRadius: 50, duration: 0.4));
+    }
+  }
+
+  /// 进入瞄准模式
+  void _enterAimingMode(ItemId item) {
+    _aimingItem = item;
+    _crosshair = Crosshair();
+    // 准心初始位置为屏幕中心
+    _crosshair!.position = Vector2(size.x / 2, size.y / 2);
+    add(_crosshair!);
+    _paused = true; // 瞄准时暂停游戏
+    _notifyHud();
+  }
+
+  /// 退出瞄准模式
+  void _exitAimingMode() {
+    _aimingItem = null;
+    _crosshair?.removeFromParent();
+    _crosshair = null;
+    _paused = false;
+    _notifyHud();
+  }
+
+  /// 在指定位置发射轨道打击
+  void _fireOrbitalStrike(Vector2 target) {
+    // 瞄准标记
+    add(ItemEffectRing(position: target, color: const Color(0xFFFF7043), maxRadius: 50, duration: 1.5));
+    // 1.5 秒后打击
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      add(LightningStrike(
+        target: target,
+        startY: 0,
+        onStrike: () {
+          for (final e in enemies) {
+            if (_enemyIsDead(e)) continue;
+            if (e.position.distanceTo(target) <= 80) {
+              if (e is Enemy) e.takeDamage(50);
+              if (e is EliteEnemy) e.takeDamage(50);
+              add(HitFlash(at: e.position.clone()));
+              add(DamageNumber(amount: 50, at: e.position.clone(), color: const Color(0xFFFF7043), icon: '🛰️'));
+              if (_enemyIsDead(e)) _onEnemyKilled(e);
+            }
+          }
+        },
+      ));
+    });
+  }
+
+  // 超载核心状态
+  double _overchargeTimer = 0;
+  bool _overchargeActive = false;
+
+  // 道具获取提示
+  ItemId? _lastAcquiredItem;
+
+  // 瞄准模式
+  ItemId? _aimingItem;
+  Crosshair? _crosshair;
+
+  // 满槽替换（背包满时的新道具等待选择）
+  ItemId? _pendingItem;
+  ItemId? get pendingItem => _pendingItem;
 
   // ─── 主循环 ───
   @override
@@ -1253,7 +1416,7 @@ VoidCallback? onGameWon;
       _notifyHud();
       return;
     }
-    if (_paused) {
+    if (_paused || _pendingItem != null) {
       // 暂停：子组件传递 dt=0（冻结敌人/子弹移动），仅 HUD 刷新
       super.update(0);
       _notifyHud();
@@ -1273,7 +1436,8 @@ VoidCallback? onGameWon;
 
     // ② 无人机：同步数量 + 自瞄 + 自动射击
     _syncDroneCount();
-    final droneCd = droneFireCooldown * (_buffManager?.droneCooldownMultiplier ?? 1.0);
+    final baseDroneCd = droneFireCooldown * (_buffManager?.droneCooldownMultiplier ?? 1.0);
+    final droneCd = _overchargeActive ? baseDroneCd * 0.5 : baseDroneCd;
     for (int i = 0; i < _drones.length; i++) {
       final drone = _drones[i];
       // 自瞄最近敌人
@@ -1306,7 +1470,8 @@ VoidCallback? onGameWon;
 
     // ③ 自动射击
     _fireTimer += dt;
-    final effectiveInterval = fireInterval * (_buffManager?.fireRateMultiplier ?? 1.0);
+    final baseInterval = fireInterval * (_buffManager?.fireRateMultiplier ?? 1.0);
+    final effectiveInterval = _overchargeActive ? baseInterval * 0.5 : baseInterval;
     if (_fireTimer >= effectiveInterval) {
       _fireTimer = 0;
       _fireBullet();
@@ -1315,6 +1480,15 @@ VoidCallback? onGameWon;
     // ④ 波次计时
     _waveTimer -= dt;
     if (_waveTimer <= 0) _advanceWave();
+
+    // ④½ 超载核心倒计时
+    if (_overchargeActive) {
+      _overchargeTimer -= dt;
+      if (_overchargeTimer <= 0) {
+        _overchargeActive = false;
+        _overchargeTimer = 0;
+      }
+    }
 
     _notifyHud();
 
@@ -1338,14 +1512,16 @@ VoidCallback? onGameWon;
           _spawnEliteEnemy();
         }
       }
-      // 惊雷：第 1 波就出现（测试）
-      _jingLeiSpawnTimer += dt;
-      if (_jingLeiSpawnTimer >= currentSpawnInterval * 6) {
-        _jingLeiSpawnTimer = 0;
-        _spawnJingLei();
+      // 惊雷：第 6 波开始出现
+      if (_wave >= 6) {
+        _jingLeiSpawnTimer += dt;
+        if (_jingLeiSpawnTimer >= currentSpawnInterval * 6) {
+          _jingLeiSpawnTimer = 0;
+          _spawnJingLei();
+        }
       }
-      // 护士：第 5 波后出现
-      if (_wave >= 5) {
+      // 护士：第 4 波后出现
+      if (_wave >= 4) {
         _nurseSpawnTimer += dt;
         if (_nurseSpawnTimer >= currentSpawnInterval * 3) {
           _nurseSpawnTimer = 0;
@@ -1364,9 +1540,6 @@ VoidCallback? onGameWon;
 
     // ⑥½ 护士治疗光环
     _updateNurseAuras(dt);
-
-    // ⑥¾ 惊雷闪电链攻击
-    _updateJingLeiAttacks();
 
     // ⑦ 静电场
     if (_buffManager?.staticFieldLevel != null && _buffManager!.staticFieldLevel > 0) {
@@ -1406,7 +1579,7 @@ VoidCallback? onGameWon;
         if (e is Enemy) e.takeDamage(dps * dt);
         if (e is EliteEnemy) e.takeDamage(dps * dt);
         if (showDotNumber) {
-          add(DamageNumber(amount: dps, at: e.position.clone(), color: const Color(0xFFFF6D3F), icon: '🔥'));
+          add(DamageNumber(amount: _actualDmg(e, dps), at: e.position.clone(), color: const Color(0xFFFF6D3F), icon: '🔥'));
         }
         if (_enemyIsDead(e)) _onEnemyKilled(e);
       }
@@ -1420,7 +1593,7 @@ VoidCallback? onGameWon;
         if (e is Enemy) e.takeDamage(shocked.dps * dt);
         if (e is EliteEnemy) e.takeDamage(shocked.dps * dt);
         if (showDotNumber) {
-          add(DamageNumber(amount: shocked.dps, at: e.position.clone(), color: const Color(0xFFFFD740), icon: '⚡'));
+          add(DamageNumber(amount: _actualDmg(e, shocked.dps), at: e.position.clone(), color: const Color(0xFFFFD740), icon: '⚡'));
         }
         if (_enemyIsDead(e)) _onEnemyKilled(e);
       }
@@ -1435,7 +1608,7 @@ VoidCallback? onGameWon;
           if (e is Enemy) e.takeDamage(rift.dps * dt);
           if (e is EliteEnemy) e.takeDamage(rift.dps * dt);
           if (showDotNumber) {
-            add(DamageNumber(amount: rift.dps, at: e.position.clone(), color: const Color(0xFFAB47BC), icon: '🌑'));
+            add(DamageNumber(amount: _actualDmg(e, rift.dps), at: e.position.clone(), color: const Color(0xFFAB47BC), icon: '🌑'));
           }
           if (_enemyIsDead(e)) _onEnemyKilled(e);
           if (rift.pullStrength > 0) {
@@ -1471,6 +1644,13 @@ VoidCallback? onGameWon;
     }
     _wave++;
     _exp += TalentManager.instance.bonusExpPerWave;
+    // 每 5 波奖励一个道具
+    if (_wave % 5 == 0) {
+      final itemId = ItemRegistry.randomId();
+      addItem(itemId);
+      final meta = ItemRegistry.data[itemId]!;
+      add(ItemFlyToBar(from: Vector2(size.x / 2, -10), color: meta.color, icon: meta.icon));
+    }
     _waveTimer = _wave == maxWave ? waveDuration * 2 : waveDuration;
     _enemyHpBonus += 0.25;
     _enemySpeedBonus += 0.08;
@@ -1500,8 +1680,12 @@ class HudData {
   final bool paused;
   final int buffState;
   final List<BuffId>? buffChoices;
-  final List<List<BuffId>> buffStash;
+  final List<ItemId> items;
   final Map<BuffId, int> activeBuffs;
+  final ItemId? lastAcquiredItem;
+  final ItemId? aimingItem; // 当前瞄准的道具（非 null 表示瞄准中）
+  final ItemId? pendingItem; // 满槽时等待替换选择的新道具
+  final bool nextWaveReward; // 下一波有道具奖励（第 4/9/14 波提示）
 
   const HudData({
     required this.hp, required this.maxHp,
@@ -1511,7 +1695,17 @@ class HudData {
     this.paused = false,
     this.buffState = 0,
     this.buffChoices,
-    this.buffStash = const [],
+    this.items = const [],
     this.activeBuffs = const {},
+    this.lastAcquiredItem,
+    this.aimingItem,
+    this.pendingItem,
+    this.nextWaveReward = false,
   });
+}
+
+/// 计算实际显示伤害（考虑惊雷减伤/无敌）
+double _actualDmg(PositionComponent enemy, double incoming) {
+  if (enemy is JingLeiEnemy) return enemy.effectiveDamage(incoming);
+  return incoming;
 }

@@ -7,6 +7,7 @@ import 'screens/talent_page.dart';
 import 'screens/game_screen.dart';
 import 'screens/victory_screen.dart';
 import 'game/talent_manager.dart';
+import 'game/audio_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,7 @@ class DefendTheTowerApp extends StatelessWidget {
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0D1B2A),
       ),
+      navigatorObservers: [BgmObserver()],
       initialRoute: '/',
       routes: {
         '/': (_) => const MainMenuScreen(),
@@ -59,5 +61,53 @@ class DefendTheTowerApp extends StatelessWidget {
         },
       },
     );
+  }
+}
+
+/// 路由观察者 — 在首帧渲染后切换 BGM，不阻塞 build 阶段
+class BgmObserver extends NavigatorObserver {
+  void _defer(VoidCallback fn) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => fn());
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _defer(() => _playForRoute(route));
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) {
+      _defer(() => _playForRoute(previousRoute));
+    }
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (newRoute != null) {
+      _defer(() => _playForRoute(newRoute));
+    }
+  }
+
+  void _playForRoute(Route<dynamic> route) {
+    final name = route.settings.name;
+    switch (name) {
+      case '/':
+      case '/levelSelect':
+        AudioManager.instance.playBgm('music/menu.wav');
+        break;
+      case '/talent':
+        AudioManager.instance.playBgm('music/Talent.wav');
+        break;
+      case '/monsterpedia':
+        AudioManager.instance.playBgm('music/Encycloppedia.wav');
+        break;
+      case '/game':
+        AudioManager.instance.playBgm('music/Battle_in_Space_Loop.wav');
+        break;
+      case '/victory':
+        AudioManager.instance.playBgm('music/victory!.mp3', loop: false);
+        break;
+    }
   }
 }

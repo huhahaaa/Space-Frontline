@@ -7,7 +7,8 @@ import '../game/buffs/buff_registry.dart' hide Element;
 import '../game/buffs/buff_registry.dart' as be show Element;
 import '../game/talent_manager.dart';
 import 'widgets/buff_card_overlay.dart';
-import 'widgets/buff_stash_bar.dart';
+import '../game/items/item_data.dart';
+import 'widgets/item_bar.dart';
 
 class GameScreen extends StatefulWidget {
   final int? startWave;
@@ -93,7 +94,6 @@ class _GameScreenState extends State<GameScreen> {
                   choices: data.buffChoices!,
                   currentLevels: data.activeBuffs,
                   onSelected: (id) => _game.selectBuff(id),
-                  onSkip: () => _game.skipBuff(),
                   onReroll: TalentManager.instance.rerollsRemaining > 0
                       ? () => _game.rerollBuffChoices()
                       : null,
@@ -105,38 +105,31 @@ class _GameScreenState extends State<GameScreen> {
           },
         ),
 
-        // 暂存槽
+        // 道具栏
         Positioned(
           top: 40,
           left: 0,
           child: SafeArea(
-            child: Builder(
-              builder: (ctx) {
-                final data = _game.hudNotifier.value;
-                return BuffStashBar(
-                  stash: data.buffStash,
-                  activeBuffs: data.activeBuffs,
-                  onTap: (index) => _game.selectFromStash(index),
-                );
-              },
-            ),
+            child: _ItemBarPoller(game: _game),
           ),
         ),
+
+        // 道具获取横幅（含飞入动画）
+        _AcquiredBanner(game: _game),
+
+        // 满槽替换弹窗
+        _PendingItemDialog(game: _game),
 
         // HUD
         _GameHud(game: _game, onBack: _backToMenu),
 
-        // 底部提示
-        const Positioned(
+        // 瞄准提示 / 底部提示
+        Positioned(
           bottom: 2,
           left: 0,
           right: 0,
           child: SafeArea(
-            child: Text(
-              '🤖 炮塔/无人机自动瞄准',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0x55FFFFFF), fontSize: 9),
-            ),
+            child: _AimingHintPoller(game: _game),
           ),
         ),
       ],
@@ -232,6 +225,18 @@ class _GameHudState extends State<_GameHud> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                if (_data.nextWaveReward)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      '🎁 下一波奖励：随机道具！',
+                      style: TextStyle(
+                        color: Color(0xFFFFD700),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Container(
                   height: 6,
@@ -304,57 +309,30 @@ class _GameHudState extends State<_GameHud> {
         Positioned(
           bottom: 20,
           left: 12,
-          right: 12,
+          right: 52,
           child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('🏰 ${_data.hp} / ${_data.maxHp}',
-                        style: TextStyle(
-                            color: hpPercent > 0.4 ? Colors.white70 : Colors.redAccent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600)),
-                    Text(
-                      hpPercent >= 1.0 ? '完好' : hpPercent >= 0.4 ? '受损' : '危急',
-                      style: TextStyle(
-                          color: hpPercent >= 1.0
-                              ? Colors.greenAccent
-                              : hpPercent >= 0.4
-                                  ? Colors.orangeAccent
-                                  : Colors.redAccent,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Container(
-                  width: double.infinity,
-                  height: 12,
+            child: Container(
+              width: double.infinity,
+              height: 12,
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(180),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.white.withAlpha(50), width: 1),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: hpPercent,
+                child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withAlpha(180),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white.withAlpha(50), width: 1),
-                  ),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: hpPercent,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(5),
-                        gradient: LinearGradient(
-                          colors: hpPercent > 0.4
-                              ? [const Color(0xFFCC3333), const Color(0xFFFF6644)]
-                              : [const Color(0xFF880000), const Color(0xFFFF2222)],
-                        ),
-                      ),
+                    borderRadius: BorderRadius.circular(5),
+                    gradient: LinearGradient(
+                      colors: hpPercent > 0.4
+                          ? [const Color(0xFFCC3333), const Color(0xFFFF6644)]
+                          : [const Color(0xFF880000), const Color(0xFFFF2222)],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -362,7 +340,7 @@ class _GameHudState extends State<_GameHud> {
         // ── 右下：Buff 清单按钮 ──
         Positioned(
           right: 4,
-          bottom: 148,
+          bottom: 160,
           child: SafeArea(
             child: GestureDetector(
               onTap: () => _showBuffPanel(context, _data),
@@ -420,35 +398,21 @@ class _GameHudState extends State<_GameHud> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.amberAccent.withAlpha(100)),
                   ),
-                  child: Stack(
-                    children: [
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: FractionallySizedBox(
-                          heightFactor: expPercent,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              gradient: const LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [Color(0xFF44CC44), Color(0xFF88EE44)],
-                              ),
-                            ),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: FractionallySizedBox(
+                      heightFactor: expPercent,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          gradient: const LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Color(0xFF44CC44), Color(0xFF88EE44)],
                           ),
                         ),
                       ),
-                      Center(
-                        child: Text(
-                          '${_data.exp}',
-                          style: TextStyle(
-                            color: Colors.white.withAlpha(180),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -589,4 +553,406 @@ class _ElementGroup extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 道具获取横幅 — 监听 hudNotifier 中 lastAcquiredItem 变化
+class _AcquiredBanner extends StatefulWidget {
+  final DefendTheTowerGame game;
+  const _AcquiredBanner({required this.game});
+
+  @override
+  State<_AcquiredBanner> createState() => _AcquiredBannerState();
+}
+
+class _AcquiredBannerState extends State<_AcquiredBanner>
+    with SingleTickerProviderStateMixin {
+  ItemId? _last;
+  ItemId? _shown;
+  late final AnimationController _anim = AnimationController(
+    duration: const Duration(milliseconds: 2200),
+    vsync: this,
+  );
+
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _poll = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!mounted) return;
+      final cur = widget.game.hudNotifier.value.lastAcquiredItem;
+      if (cur != null && cur != _last) {
+        setState(() {
+          _last = cur;
+          _shown = cur;
+        });
+        _anim.forward(from: 0);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_shown == null || _anim.isCompleted) {
+      return const SizedBox.shrink();
+    }
+    final meta = ItemRegistry.data[_shown]!;
+    final t = _anim.value;
+    final opacity = (t < 0.1 ? t / 0.1 : t > 0.6 ? (1 - t) / 0.4 : 1.0)
+        .clamp(0.0, 1.0);
+    final slideY =
+        -20.0 * (1 - Curves.easeOutCubic.transform(t.clamp(0.0, 1.0)));
+
+    return Positioned(
+      top: 70,
+      left: 8,
+      right: 8,
+      child: SafeArea(
+        child: Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, slideY),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xDD0D1B2A),
+                borderRadius: BorderRadius.circular(10),
+                border:
+                    Border.all(color: meta.color.withValues(alpha: 0.6)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('🎁', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 6),
+                  Text('获得',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 12)),
+                  const SizedBox(width: 4),
+                  Text(meta.icon, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 4),
+                  Text(meta.name,
+                      style: TextStyle(
+                          color: meta.color,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 道具栏轮询器 — 用 Timer 异步刷新，避免 ValueListenableBuilder 在 build 阶段崩溃
+class _ItemBarPoller extends StatefulWidget {
+  final DefendTheTowerGame game;
+  const _ItemBarPoller({required this.game});
+
+  @override
+  State<_ItemBarPoller> createState() => _ItemBarPollerState();
+}
+
+class _ItemBarPollerState extends State<_ItemBarPoller> {
+  Timer? _timer;
+  late List<ItemId> _items;
+  late ItemId? _aiming;
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.game.hudNotifier.value;
+    _items = List.from(d.items);
+    _aiming = d.aimingItem;
+    _timer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+      if (!mounted) return;
+      final d = widget.game.hudNotifier.value;
+      if (!_listEq(d.items, _items) || d.aimingItem != _aiming) {
+        setState(() {
+          _items = List.from(d.items);
+          _aiming = d.aimingItem;
+        });
+      }
+    });
+  }
+
+  bool _listEq(List<ItemId> a, List<ItemId> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ItemBar(
+      items: _items,
+      onTap: (index) => widget.game.useItem(index),
+      onLongPress: _aiming == null
+          ? (index) => _showItemDetail(context, _items[index])
+          : null,
+    );
+  }
+}
+
+/// 瞄准提示轮询器 — 异步轮询，不触发 build 阶段冲突
+class _AimingHintPoller extends StatefulWidget {
+  final DefendTheTowerGame game;
+  const _AimingHintPoller({required this.game});
+
+  @override
+  State<_AimingHintPoller> createState() => _AimingHintPollerState();
+}
+
+class _AimingHintPollerState extends State<_AimingHintPoller> {
+  Timer? _timer;
+  ItemId? _aiming;
+
+  @override
+  void initState() {
+    super.initState();
+    _aiming = widget.game.hudNotifier.value.aimingItem;
+    _timer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+      if (!mounted) return;
+      final cur = widget.game.hudNotifier.value.aimingItem;
+      if (cur != _aiming) {
+        setState(() => _aiming = cur);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_aiming != null) {
+      return const Text(
+        '🎯 点击屏幕选择轨道打击位置',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+            color: Color(0xFFFF7043),
+            fontSize: 12,
+            fontWeight: FontWeight.bold),
+      );
+    }
+    return const Text(
+      '🤖 炮塔/无人机自动瞄准',
+      textAlign: TextAlign.center,
+      style: TextStyle(color: Color(0x55FFFFFF), fontSize: 9),
+    );
+  }
+}
+
+/// 长按道具显示详情弹窗
+void _showItemDetail(BuildContext context, ItemId id) {
+  final meta = ItemRegistry.data[id]!;
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xEE0D1B2A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: meta.color.withValues(alpha: 0.5)),
+      ),
+      title: Row(
+        children: [
+          Text(meta.icon, style: const TextStyle(fontSize: 24)),
+          const SizedBox(width: 12),
+          Text(meta.name,
+              style: TextStyle(color: meta.color, fontSize: 18)),
+        ],
+      ),
+      content: Text(
+        meta.description,
+        style: const TextStyle(color: Colors.white70, fontSize: 14),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child:
+              const Text('关闭', style: TextStyle(color: Colors.white54)),
+        ),
+      ],
+    ),
+  );
+}
+
+/// 满槽替换弹窗 — 背包满时让玩家选择保留哪个
+class _PendingItemDialog extends StatefulWidget {
+  final DefendTheTowerGame game;
+  const _PendingItemDialog({required this.game});
+
+  @override
+  State<_PendingItemDialog> createState() => _PendingItemDialogState();
+}
+
+class _PendingItemDialogState extends State<_PendingItemDialog> {
+  Timer? _poll;
+  ItemId? _pending;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!mounted) return;
+      final cur = widget.game.hudNotifier.value.pendingItem;
+      if (cur != null && cur != _pending) {
+        _pending = cur;
+        _showDialog(cur);
+      } else if (cur == null && _pending != null) {
+        _pending = null;
+      }
+    });
+  }
+
+  void _showDialog(ItemId newId) {
+    final newMeta = ItemRegistry.data[newId]!;
+    final items = List<ItemId>.from(widget.game.hudNotifier.value.items);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xEE0D1B2A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+              color: newMeta.color.withValues(alpha: 0.5), width: 1.5),
+        ),
+        title: Row(
+          children: [
+            const Text('🎁', style: TextStyle(fontSize: 20)),
+            const SizedBox(width: 8),
+            const Text('背包已满',
+                style: TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 新道具展示
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: newMeta.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: newMeta.color.withValues(alpha: 0.5), width: 1.2),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(newMeta.icon, style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 6),
+                  Text(newMeta.name,
+                      style: TextStyle(
+                          color: newMeta.color,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text('选择要替换的道具：',
+                style: TextStyle(color: Colors.white54, fontSize: 12)),
+            const SizedBox(height: 8),
+            // 当前道具列表
+            ...List.generate(items.length, (i) {
+              final meta = ItemRegistry.data[items[i]]!;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: meta.color.withValues(alpha: 0.15),
+                      foregroundColor: meta.color,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(
+                            color: meta.color.withValues(alpha: 0.4)),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      widget.game.confirmItemReplace(i);
+                    },
+                    child: Row(
+                      children: [
+                        Text(meta.icon, style: const TextStyle(fontSize: 16)),
+                        const SizedBox(width: 8),
+                        Text(meta.name, style: const TextStyle(fontSize: 13)),
+                        const Spacer(),
+                        const Text('替换 →',
+                            style:
+                                TextStyle(color: Colors.white38, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white38,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  widget.game.confirmItemReplace(null);
+                },
+                child: const Text('丢弃新道具，保留原有',
+                    style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) {
+      // 如果用户通过系统返回键关闭，也放弃新道具
+      if (_pending != null) {
+        _pending = null;
+        widget.game.confirmItemReplace(null);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
