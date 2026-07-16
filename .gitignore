@@ -50,3 +50,8 @@ app.*.map.json
 
 # Generated docx (rebuild with docs/md2docx.py)
 docs/*.docx
+
+# Claude Code assistant files
+.claude/
+.superpowers/
+docs/superpowers/
